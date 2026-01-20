@@ -157,10 +157,28 @@ class FlowSyncEngine: ObservableObject {
         skill.sourceId = source.id
         skill.categoryRaw = SkillCategory.global.rawValue
         
-        // 解析 Group Path (取父目录)
-        let url = URL(fileURLWithPath: path)
-        let parent = url.deletingLastPathComponent().path
-        skill.groupPath = parent == "." ? "" : parent
+        // 解析 Group Path
+        // GitHub path 示例: "skills/brand-guidelines/brand-guidelines.md"
+        // 我们需要: groupPath = "brand-guidelines"
+        var components = path.components(separatedBy: "/")
+        
+        // 移除文件名（最后一个元素）
+        if !components.isEmpty {
+            components.removeLast()
+        }
+        
+        // 移除顶层目录（skills/rules/gallery 等）
+        if !components.isEmpty {
+            let firstDir = components[0]
+            if ["skills", "rules", "gallery"].contains(firstDir) {
+                components.removeFirst()
+            }
+        }
+        
+        // 剩余的就是分组路径
+        skill.groupPath = components.joined(separator: "/")
+        
+        print("[Van Sync] [SKILL] Generated: \(displayName), groupPath: '\(skill.groupPath)', from path: \(path)")
         
         return skill
     }
@@ -352,6 +370,11 @@ class FlowSyncEngine: ObservableObject {
     }
     
     func installSkill(_ skill: VanSkill, to targetSource: SkillSource, modelContext: ModelContext) async throws {
+        print("[Van Install] ========== INSTALL START ==========")
+        print("[Van Install] Skill: \(skill.name)")
+        print("[Van Install] GroupPath: '\(skill.groupPath)'")
+        print("[Van Install] Target: \(targetSource.name)")
+        
         guard let remoteUrl = skill.remoteContentUrl else {
             print("[Van Install] No remote URL for skill: \(skill.name)")
             return
@@ -383,12 +406,16 @@ class FlowSyncEngine: ObservableObject {
             subFolder = targetSource.typeRaw == SkillSource.SourceType.ide.rawValue ? "skills" : ".agent/skills"
         }
         
+        print("[Van Install] SubFolder: \(subFolder)")
+        
         // 拼接 Group Path，保持目录结构
         var targetPathComponents = [subFolder]
         if !skill.groupPath.isEmpty {
             targetPathComponents.append(skill.groupPath)
         }
         let folder = targetPathComponents.reduce(baseUrl) { $0.appendingPathComponent($1) }
+        
+        print("[Van Install] Final path: \(folder.path)")
         
         // 3. 创建目录并写入文件
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -397,9 +424,65 @@ class FlowSyncEngine: ObservableObject {
         try content.write(to: fileUrl, atomically: true, encoding: .utf8)
         
         print("[Van Install] Success: \(fileUrl.path)")
+        print("[Van Install] ========== INSTALL COMPLETE ==========")
         
         // 4. 刷新目标源
         await sync(source: targetSource, modelContext: modelContext)
+    }
+
+
+    
+    /// 批量获取远程 Skills 的元数据（描述）
+    func fetchMetadataForSkills(_ skills: [VanSkill], modelContext: ModelContext) async {
+        print("[Van Metadata] Starting batch fetch for \(skills.count) skills")
+        
+        await withTaskGroup(of: Void.self) { group in
+            // 每次最多并发 5 个请求
+            let maxConcurrent = 5
+            var active = 0
+            
+            for skill in skills {
+                if !skill.isRemote || (skill.desc != "Remote Skill" && !skill.desc.isEmpty) { continue }
+                if skill.remoteContentUrl == nil { continue }
+                
+                if active >= maxConcurrent {
+                    await group.next()
+                    active -= 1
+                }
+                
+                group.addTask {
+                    await self.fetchSingleMetadata(skill)
+                }
+                active += 1
+            }
+        }
+        
+        // 保存更改
+        await MainActor.run {
+            try? modelContext.save()
+        }
+        print("[Van Metadata] Batch fetch complete")
+    }
+    
+    private func fetchSingleMetadata(_ skill: VanSkill) async {
+        guard let url = skill.remoteContentUrl else { return }
+        
+        var request = URLRequest(url: url)
+        request.addValue("VanApp/1.0", forHTTPHeaderField: "User-Agent")
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            if let content = String(data: data, encoding: .utf8) {
+                let (desc, _) = extractMetadata(from: content)
+                if !desc.isEmpty {
+                    await MainActor.run {
+                        skill.desc = desc
+                    }
+                }
+            }
+        } catch {
+            print("[Van Metadata] Failed for \(skill.name): \(error)")
+        }
     }
 
 }
