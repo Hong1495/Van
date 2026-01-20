@@ -271,11 +271,27 @@ struct SourceDetailView: View {
     @Query(sort: \SkillSource.name) private var allSources: [SkillSource]
     @StateObject private var engine = FlowSyncEngine.shared
     
+    // 动态查询该 Source 下的 Skills
+    @Query private var skills: [VanSkill]
+    
+    init(source: SkillSource) {
+        self.source = source
+        let sourceId = source.id
+        // 使用 sourceId 过滤，按名称排序
+        _skills = Query(filter: #Predicate { $0.sourceId == sourceId }, sort: \.name)
+    }
+    
     @State private var skillToInstall: VanSkill?
     @State private var groupToInstall: [VanSkill]? // 批量安装状态
+    @State private var groupToUninstall: [VanSkill]? // 批量删除状态
     @State private var showingInstallTargetPicker = false
+    @State private var showingUninstallConfirm = false
+    
     @State private var installError: String?
     @State private var showingErrorAlert = false
+    
+    @State private var uninstallError: String?
+    @State private var showingUninstallErrorAlert = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -288,7 +304,6 @@ struct SourceDetailView: View {
                     Button("重试") { Task { await engine.sync(source: source, modelContext: modelContext) } }
                 }
             } else {
-                let skills = engine.gallerySkills.filter { $0.sourceId == source.id }
                 if skills.isEmpty {
                     ContentUnavailableView("无 Skill", systemImage: "magnifyingglass", description: Text("在侧边栏右键点击该源并选择“同步”来刷新。"))
                 } else {
@@ -309,13 +324,24 @@ struct SourceDetailView: View {
                             groupToInstall = group
                             skillToInstall = nil
                             showingInstallTargetPicker = true
+                        },
+                        onUninstallGroupRequest: { group in
+                            groupToUninstall = group
+                            showingUninstallConfirm = true
                         }
                     )
                 }
             }
         }
         .onAppear {
-            if source.lastSynced == nil {
+            print("[Van UI] SourceDetailView appeared for: \(source.name)")
+            print("[Van UI] Status: \(source.statusRaw)")
+            print("[Van UI] Skills count: \(skills.count)")
+            print("[Van UI] Last synced: \(source.lastSynced?.description ?? "never")")
+            
+            // 如果没有 Skills 数据，或者状态卡在 syncing，则触发同步
+            if skills.isEmpty || source.statusRaw == "syncing" {
+                print("[Van UI] Triggering sync...")
                 Task { await engine.sync(source: source, modelContext: modelContext) }
             }
         }
@@ -343,10 +369,27 @@ struct SourceDetailView: View {
                 Text("选择要将 '\(skillToInstall?.name ?? "")' 安装到的位置")
             }
         }
+        .confirmationDialog("确认删除", isPresented: $showingUninstallConfirm, titleVisibility: .visible) {
+            Button("删除全部", role: .destructive) {
+                if let group = groupToUninstall {
+                    for skill in group {
+                        uninstall(skill)
+                    }
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("确定要删除该组下的 \(groupToUninstall?.count ?? 0) 个 Skill 吗？此操作将永久删除文件。")
+        }
         .alert("安装失败", isPresented: $showingErrorAlert, actions: {
             Button("确定", role: .cancel) {}
         }, message: {
             Text(installError ?? "未知错误")
+        })
+        .alert("删除失败", isPresented: $showingUninstallErrorAlert, actions: {
+            Button("确定", role: .cancel) {}
+        }, message: {
+            Text(uninstallError ?? "未知错误")
         })
     }
     
@@ -362,7 +405,7 @@ struct SourceDetailView: View {
     
     private func uninstall(_ skill: VanSkill) {
         // 直接使用当前的 source (SourceDetailView 持有的)
-        // 只有当 skill 属于当前 source 时才处理 (通常是的)
+        // 只有当 skill 属于当前 source 时才处理
         if skill.sourceId == source.id {
              if let localPath = skill.localPath {
                  Task {
@@ -372,16 +415,17 @@ struct SourceDetailView: View {
                          await engine.sync(source: source, modelContext: modelContext)
                      } catch {
                          print("[Van Uninstall] Delete failed: \(error)")
-                         // 这里可以增加弹窗提示，暂时先打印日志
+                         await MainActor.run {
+                             uninstallError = "删除失败: \(error.localizedDescription)"
+                             showingUninstallErrorAlert = true
+                         }
                      }
                  }
              } else {
                  print("[Van Uninstall] Error: localPath is nil")
+                 uninstallError = "删除失败: 找不到文件路径"
+                 showingUninstallErrorAlert = true
              }
-        } else {
-             // 如果在 All Skills 视图 (目前没有)，则需要查找 source
-             // 但当前 UI 结构是 SourceDetailView，所以 source 是明确的
-             print("[Van Uninstall] Context mismatch: skill source \(skill.sourceId ?? UUID()) != current \(source.id)")
         }
     }
 }

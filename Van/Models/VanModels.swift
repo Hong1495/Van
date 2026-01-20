@@ -47,7 +47,7 @@ final class VanSkill {
     var isInstalled: Bool = false
     var isActive: Bool = true
     
-    var localPath: URL? { URL(string: localPathString) }
+    var localPath: URL? { localPathString.isEmpty ? nil : URL(fileURLWithPath: localPathString) }
     var remoteContentUrl: URL? { URL(string: remoteContentUrlString) }
     
     var ecosystem: SkillEcosystem {

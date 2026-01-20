@@ -22,7 +22,7 @@ struct AddSourceView: View {
                 TextField("URL:", text: $url)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 300)
-                    .onChange(of: url) { newValue in
+                    .onChange(of: url, initial: false) { oldValue, newValue in
                         if name.isEmpty, let last = newValue.split(separator: "/").last {
                             name = String(last).capitalized
                         }

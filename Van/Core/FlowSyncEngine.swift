@@ -4,7 +4,7 @@ import SwiftData
 
 @MainActor
 class FlowSyncEngine: ObservableObject {
-    @Published var gallerySkills: [VanSkill] = []
+    @Published var isSyncing = false // 替代 gallerySkills 作为加载状态指示(可选，或直接由 source.statusRaw 驱动)
     static let shared = FlowSyncEngine()
     
     private var syncInProgress = Set<UUID>()
@@ -14,6 +14,11 @@ class FlowSyncEngine: ObservableObject {
     
     /// 统一同步入口：可同步网络源或本地源
     func sync(source: SkillSource, modelContext: ModelContext) async {
+        print("[Van Sync] ========== SYNC CALLED ==========")
+        print("[Van Sync] Source: \(source.name)")
+        print("[Van Sync] Type: \(source.typeRaw)")
+        print("[Van Sync] ID: \(source.id)")
+        
         guard !syncInProgress.contains(source.id) else {
             print("[Van Sync] [SKIP] Sync already in progress for \(source.name)")
             return
@@ -21,28 +26,32 @@ class FlowSyncEngine: ObservableObject {
         syncInProgress.insert(source.id)
         defer { syncInProgress.remove(source.id) }
         
+        print("[Van Sync] Setting status to 'syncing'")
         await MainActor.run { source.statusRaw = "syncing" }
         print("[Van Sync] [BEGIN] \(source.name)")
         
         switch source.typeRaw {
         case SkillSource.SourceType.subscription.rawValue:
-            await syncGithub(source: source)
+            print("[Van Sync] Calling syncGithub")
+            await syncGithub(source: source, modelContext: modelContext)
         case SkillSource.SourceType.project.rawValue, SkillSource.SourceType.ide.rawValue:
-            await syncLocalProject(source: source)
+            print("[Van Sync] Calling syncLocalProject")
+            await syncLocalProject(source: source, modelContext: modelContext)
         default:
             print("[Van Sync] [SKIP] Unknown type: \(source.typeRaw)")
             break
         }
+        
+        print("[Van Sync] ========== SYNC COMPLETE ==========")
     }
 
     
-    private func syncGithub(source: SkillSource) async {
-        // 智能修复：如果 URL 不完整但 Name 包含有效地址，则使用 Name
+    private func syncGithub(source: SkillSource, modelContext: ModelContext) async {
+        // ... (URL parsing logic remains same, condensed for brevity in replacement) ...
         var effectiveUrl = source.urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         if !effectiveUrl.contains("github.com/") || effectiveUrl.split(separator: "/").count < 4 {
             if source.name.contains("github.com/") {
                 effectiveUrl = source.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                print("[Van Sync] [FIX] Using name as URL: \(effectiveUrl)")
             }
         }
         
@@ -55,7 +64,6 @@ class FlowSyncEngine: ObservableObject {
             return
         }
         
-        // 解析 Owner/Repo
         let parts = url.pathComponents.filter { $0 != "/" && !$0.isEmpty }
         guard parts.count >= 2 else {
             await updateStatus(source, "Error: URL format error")
@@ -105,8 +113,7 @@ class FlowSyncEngine: ObservableObject {
             }
             
             await MainActor.run {
-                self.mergeSkills(newSkills, for: source)
-                print("[Van Sync] [SUCCESS] Total: \(self.gallerySkills.filter { $0.sourceId == source.id }.count)")
+                self.mergeSkills(newSkills, for: source, modelContext: modelContext)
             }
         } catch {
             await updateStatus(source, "Sync Error: \(error.localizedDescription)")
@@ -151,8 +158,6 @@ class FlowSyncEngine: ObservableObject {
         skill.categoryRaw = SkillCategory.global.rawValue
         
         // 解析 Group Path (取父目录)
-        // path example: skills/frontend/react.md -> group: skills/frontend
-        // path example: skills/react.md -> group: skills
         let url = URL(fileURLWithPath: path)
         let parent = url.deletingLastPathComponent().path
         skill.groupPath = parent == "." ? "" : parent
@@ -163,30 +168,42 @@ class FlowSyncEngine: ObservableObject {
     private func updateStatus(_ source: SkillSource, _ status: String) async {
         await MainActor.run { source.statusRaw = status }
     }
-    
-    private func syncLocalProject(source: SkillSource) async {
-        guard let url = URL(string: source.localPathString) else { return }
+
+    private func syncLocalProject(source: SkillSource, modelContext: ModelContext) async {
+        print("[Van Sync] [LOCAL] Starting local sync for: \(source.name)")
+        print("[Van Sync] [LOCAL] Path: \(source.localPathString)")
+        
+        guard let url = URL(string: source.localPathString) else {
+            print("[Van Sync] [LOCAL] Invalid URL for path: \(source.localPathString)")
+            await updateStatus(source, "Error: Invalid Path")
+            return
+        }
+        
         let fileManager = FileManager.default
         let searchPaths = [
             url.appendingPathComponent(".agent/skills"),
             url.appendingPathComponent(".cursor/rules"),
             url.appendingPathComponent("skills")
         ]
+        
+        print("[Van Sync] [LOCAL] Search paths: \(searchPaths.map { $0.path })")
+        
         var results: [VanSkill] = []
         
         // 递归遍历函数
         func scanDirectory(at dir: URL, relativeTo root: URL) {
             let keys: [URLResourceKey] = [.isDirectoryKey]
-            guard let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: keys) else { return }
+            guard let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: keys) else {
+                print("[Van Sync] [LOCAL] Cannot enumerate: \(dir.path)")
+                return
+            }
             
             for case let fileURL as URL in enumerator {
-                // 跳过隐藏文件
                 if fileURL.lastPathComponent.hasPrefix(".") && !fileURL.lastPathComponent.hasPrefix(".cursor") { continue }
                 
                 let resourceValues = try? fileURL.resourceValues(forKeys: Set(keys))
                 if resourceValues?.isDirectory == true { continue }
                 
-                // 放宽条件：支持所有 .md 文件 (排除 README)，支持 .mdc
                 let ext = fileURL.pathExtension.lowercased()
                 let name = fileURL.lastPathComponent
                 let isMarkdown = ext == "md" && name.uppercased() != "README.MD"
@@ -194,7 +211,6 @@ class FlowSyncEngine: ObservableObject {
                 if ext == "mdc" || isMarkdown {
                     let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
                     let (desc, _) = extractMetadata(from: content)
-                    
                     let displayName = name.replacingOccurrences(of: ".\(ext)", with: "")
                     
                     let skill = VanSkill(name: displayName, description: desc.isEmpty ? "本地 Skill" : desc, ecosystem: ext == "mdc" ? .cursor : .openSkills)
@@ -203,71 +219,103 @@ class FlowSyncEngine: ObservableObject {
                     skill.categoryRaw = SkillCategory.project.rawValue
                     skill.isInstalled = true
                     
-                    // 计算相对 Group Path
-                    // fileURL: /path/to/source/skills/frontend/react.md
-                    // root: /path/to/source/skills
-                    // relative: frontend/react.md -> parent: frontend
                     let components = fileURL.pathComponents
                     let rootComponents = root.pathComponents
                     if components.count > rootComponents.count {
-                        let relativeComponents = Array(components[rootComponents.count..<components.count-1]) // Exclude filename
+                        let relativeComponents = Array(components[rootComponents.count..<components.count-1])
                         skill.groupPath = relativeComponents.joined(separator: "/")
                     }
                     
                     results.append(skill)
+                    print("[Van Sync] [LOCAL] Found skill: \(displayName) at \(fileURL.path)")
                 }
             }
         }
         
         for path in searchPaths {
-            guard fileManager.fileExists(atPath: path.path) else { continue }
-            scanDirectory(at: path, relativeTo: path)
+            if fileManager.fileExists(atPath: path.path) {
+                print("[Van Sync] [LOCAL] Scanning: \(path.path)")
+                scanDirectory(at: path, relativeTo: path)
+            } else {
+                print("[Van Sync] [LOCAL] Path does not exist: \(path.path)")
+            }
         }
         
+        print("[Van Sync] [LOCAL] Total skills found: \(results.count)")
+        
         await MainActor.run {
-            self.mergeSkills(results, for: source)
+            self.mergeSkills(results, for: source, modelContext: modelContext)
         }
     }
     
-    // 增量更新逻辑：保留持久化的 Description 和 Translation
-    private func mergeSkills(_ newSkills: [VanSkill], for source: SkillSource) {
-        // 1. 找出当前源已有的 Skills
-        let currentSkills = self.gallerySkills.filter { $0.sourceId == source.id }
-        var updatedSkills: [VanSkill] = []
+    // 增量更新逻辑：写入 SwiftData
+    @MainActor
+    private func mergeSkills(_ newSkills: [VanSkill], for source: SkillSource, modelContext: ModelContext) {
+        print("[Van Sync] [MERGE] Starting merge for source: \(source.name), incoming skills: \(newSkills.count)")
         
+        // 1. 获取当前数据库中该源的所有 Skill
+        let sourceId = source.id
+        var existingSkills: [VanSkill] = []
+        do {
+            let descriptor = FetchDescriptor<VanSkill>(predicate: #Predicate { $0.sourceId == sourceId })
+            existingSkills = try modelContext.fetch(descriptor)
+            print("[Van Sync] [MERGE] Found \(existingSkills.count) existing skills in DB")
+        } catch {
+            print("[Van Sync] [MERGE] Fetch failed: \(error)")
+            source.statusRaw = "Error: DB Fetch Failed"
+            return
+        }
+        
+        var activeSkillIds = Set<UUID>()
+    
         for newSkill in newSkills {
-            if let existing = currentSkills.first(where: { $0.name == newSkill.name }) {
-                // 更新现有 Skill 的非持久化属性
+            if let existing = existingSkills.first(where: { $0.name == newSkill.name && $0.groupPath == newSkill.groupPath }) {
+                // 更新
                 existing.remoteContentUrlString = newSkill.remoteContentUrlString
                 existing.localPathString = newSkill.localPathString
                 existing.ecosystem = newSkill.ecosystem
                 existing.isInstalled = newSkill.isInstalled
-                existing.groupPath = newSkill.groupPath // 更新 Group Path
                 
-                // 如果现有描述是默认值，但新抓取到了描述（Local情况），则更新
-
                 if (existing.desc == "Remote Skill" || existing.desc == "本地 Skill") && newSkill.desc != "Remote Skill" && newSkill.desc != "本地 Skill" {
                     existing.desc = newSkill.desc
                 }
                 
-                updatedSkills.append(existing)
+                activeSkillIds.insert(existing.id)
             } else {
                 // 新增
-                updatedSkills.append(newSkill)
+                modelContext.insert(newSkill)
+                activeSkillIds.insert(newSkill.id)
+                print("[Van Sync] [MERGE] Inserted new skill: \(newSkill.name)")
             }
         }
         
-        // 2. 更新主列表：移除旧的，添加更新后的 (保持其他源的不变)
-        self.gallerySkills.removeAll { $0.sourceId == source.id }
-        self.gallerySkills.append(contentsOf: updatedSkills)
+        // 2. 清理过期的 Skills (不在本次 Sync 结果中的)
+        for existing in existingSkills {
+            if !activeSkillIds.contains(existing.id) {
+                print("[Van Sync] [MERGE] Deleting stale skill: \(existing.name)")
+                modelContext.delete(existing)
+            }
+        }
+        
+        // 保存以便 UI 立即反映
+        do {
+            try modelContext.save()
+            print("[Van Sync] [MERGE] DB save successful")
+        } catch {
+            print("[Van Sync] [MERGE] DB save failed: \(error)")
+            source.statusRaw = "Error: DB Save Failed"
+            return
+        }
         
         source.lastSynced = Date()
-        source.statusRaw = updatedSkills.isEmpty ? "No valid skills" : "active"
+        source.statusRaw = activeSkillIds.isEmpty ? "No valid skills" : "active"
+        print("[Van Sync] [MERGE] Complete. Status: \(source.statusRaw), Valid: \(activeSkillIds.count)")
     }
+
     
     private func extractMetadata(from content: String) -> (String, String) {
         var description = ""
-        var version = ""
+        let version = ""
         
         let lines = content.components(separatedBy: .newlines)
         for line in lines {
