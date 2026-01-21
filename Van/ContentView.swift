@@ -5,70 +5,19 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 enum SidebarItem: Hashable {
     case source(UUID)
 }
 
-struct SourceIconView: View {
-    let source: SkillSource
-    let fallbackSystemImage: String
-    
-    @State private var iconImage: Image?
-    
-    var body: some View {
-        Group {
-            if let iconImage {
-                iconImage
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 16, height: 16)
-            } else {
-                Image(systemName: fallbackSystemImage)
-                    .frame(width: 16, height: 16)
-            }
-        }
-        .task { await fetchIcon() }
-    }
-    
-    private func fetchIcon() async {
-        // 本地源：获取文件图标
-        if source.typeRaw != SkillSource.SourceType.subscription.rawValue {
-            let path = source.localPathString
-            if !path.isEmpty {
-                let nsImage = NSWorkspace.shared.icon(forFile: path)
-                self.iconImage = Image(nsImage: nsImage)
-            }
-            return
-        }
-        
-        // 远程源：尝试解析 GitHub Avatar
-        // 假设 URL 格式为 https://github.com/owner/repo
-        if let url = URL(string: source.urlString),
-           url.host() == "github.com" {
-            let components = url.pathComponents
-            if components.count >= 2 {
-                let owner = components[1]
-                let avatarUrl = URL(string: "https://github.com/\(owner).png?size=64")!
-                
-                // 简单缓存策略：使用 URLCache
-                let request = URLRequest(url: avatarUrl, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 10)
-                
-                if let (data, _) = try? await URLSession.shared.data(for: request),
-                   let nsImage = NSImage(data: data) {
-                    await MainActor.run {
-                        self.iconImage = Image(nsImage: nsImage)
-                    }
-                }
-            }
-        }
-    }
-}
+
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SkillSource.name) private var sources: [SkillSource]
     @StateObject private var engine = FlowSyncEngine.shared
+    @StateObject private var fileWatcher = FileWatcher.shared
     @ObservedObject private var settings = AppSettings.shared // 监听主题设置
     
     @State private var selection: SidebarItem?
@@ -204,6 +153,21 @@ struct ContentView: View {
                 if source.lastSynced == nil {
                     Task { await engine.sync(source: source, modelContext: modelContext) }
                 }
+                // 启动本地源的文件监控
+                fileWatcher.startWatching(source: source)
+            }
+        }
+        .onReceive(fileWatcher.changedSourcePublisher) { sourceId in
+            // 文件变化时自动同步
+            if let source = sources.first(where: { $0.id == sourceId }) {
+                print("[ContentView] Auto-syncing due to file change: \(source.name)")
+                Task { await engine.sync(source: source, modelContext: modelContext) }
+            }
+        }
+        .onChange(of: sources.count) { _, _ in
+            // 源列表变化时更新监控
+            for source in sources {
+                fileWatcher.startWatching(source: source)
             }
         }
         .preferredColorScheme(settings.theme.colorScheme)
@@ -265,225 +229,7 @@ struct ContentView: View {
     @State private var sourceToEdit: SkillSource?
 }
 
-struct SourceDetailView: View {
-    let source: SkillSource
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \SkillSource.name) private var allSources: [SkillSource]
-    @StateObject private var engine = FlowSyncEngine.shared
-    
-    // 动态查询该 Source 下的 Skills
-    @Query private var skills: [VanSkill]
-    
-    init(source: SkillSource) {
-        self.source = source
-        let sourceId = source.id
-        // 使用 sourceId 过滤，按名称排序
-        _skills = Query(filter: #Predicate { $0.sourceId == sourceId }, sort: \.name)
-    }
-    
-    @State private var skillToInstall: VanSkill?
-    @State private var groupToInstall: [VanSkill]? // 批量安装状态
-    @State private var groupToUninstall: [VanSkill]? // 批量删除状态
-    @State private var showingInstallTargetPicker = false
-    @State private var showingUninstallConfirm = false
-    
-    @State private var installError: String?
-    @State private var showingErrorAlert = false
-    
-    @State private var uninstallError: String?
-    @State private var showingUninstallErrorAlert = false
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            if source.statusRaw == "syncing" {
-                ContentUnavailableView { ProgressView() } description: { Text("正在同步...") }
-            } else if source.statusRaw.starts(with: "Error") || source.statusRaw.starts(with: "Sync Error") {
-                ContentUnavailableView {
-                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.red)
-                } description: { Text(source.statusRaw) } actions: {
-                    Button("重试") { Task { await engine.sync(source: source, modelContext: modelContext) } }
-                }
-            } else {
-                if skills.isEmpty {
-                    ContentUnavailableView("无 Skill", systemImage: "magnifyingglass", description: Text("在侧边栏右键点击该源并选择“同步”来刷新。"))
-                } else {
-                    SkillGroupListView(
-                        source: source,
-                        skills: skills,
-                        allSources: allSources,
-                        engine: engine,
-                        onInstallRequest: { skill in
-                            skillToInstall = skill
-                            groupToInstall = nil
-                            showingInstallTargetPicker = true
-                        },
-                        onUninstallRequest: { skill in
-                            uninstall(skill)
-                        },
-                        onInstallGroupRequest: { group in
-                            groupToInstall = group
-                            skillToInstall = nil
-                            showingInstallTargetPicker = true
-                        },
-                        onUninstallGroupRequest: { group in
-                            groupToUninstall = group
-                            showingUninstallConfirm = true
-                        }
-                    )
-                }
-            }
-        }
-        .onAppear {
-            print("[Van UI] SourceDetailView appeared for: \(source.name)")
-            print("[Van UI] Status: \(source.statusRaw)")
-            print("[Van UI] Skills count: \(skills.count)")
-            print("[Van UI] Last synced: \(source.lastSynced?.description ?? "never")")
-            
-            // 如果没有 Skills 数据，或者状态卡在 syncing，则触发同步
-            if skills.isEmpty || source.statusRaw == "syncing" {
-                print("[Van UI] Triggering sync...")
-                Task { await engine.sync(source: source, modelContext: modelContext) }
-            }
-        }
-        .confirmationDialog("安装到...", isPresented: $showingInstallTargetPicker, titleVisibility: .visible) {
-            let targets = allSources.filter { $0.typeRaw == SkillSource.SourceType.project.rawValue || $0.typeRaw == SkillSource.SourceType.ide.rawValue }
-            ForEach(targets) { target in
-                Button(target.name) {
-                    Task {
-                        // 批量安装或单体安装
-                        if let group = groupToInstall {
-                            for skill in group {
-                                await install(skill, to: target)
-                            }
-                        } else if let skill = skillToInstall {
-                            await install(skill, to: target)
-                        }
-                    }
-                }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            if let group = groupToInstall {
-                Text("将该组内的 \(group.count) 个 Skill 安装到哪里？")
-            } else {
-                Text("选择要将 '\(skillToInstall?.name ?? "")' 安装到的位置")
-            }
-        }
-        .confirmationDialog("确认删除", isPresented: $showingUninstallConfirm, titleVisibility: .visible) {
-            Button("删除全部", role: .destructive) {
-                if let group = groupToUninstall {
-                    for skill in group {
-                        uninstall(skill)
-                    }
-                }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("确定要删除该组下的 \(groupToUninstall?.count ?? 0) 个 Skill 吗？此操作将永久删除文件。")
-        }
-        .alert("安装失败", isPresented: $showingErrorAlert, actions: {
-            Button("确定", role: .cancel) {}
-        }, message: {
-            Text(installError ?? "未知错误")
-        })
-        .alert("删除失败", isPresented: $showingUninstallErrorAlert, actions: {
-            Button("确定", role: .cancel) {}
-        }, message: {
-            Text(uninstallError ?? "未知错误")
-        })
-    }
-    
-    private func install(_ skill: VanSkill?, to target: SkillSource) async {
-        guard let skill = skill else { return }
-        do {
-            try await engine.installSkill(skill, to: target, modelContext: modelContext)
-        } catch {
-            installError = "无法安装到 \(target.name): \(error.localizedDescription)"
-            showingErrorAlert = true
-        }
-    }
-    
-    private func uninstall(_ skill: VanSkill) {
-        // 直接使用当前的 source (SourceDetailView 持有的)
-        // 只有当 skill 属于当前 source 时才处理
-        if skill.sourceId == source.id {
-             if let localPath = skill.localPath {
-                 Task {
-                     do {
-                         try FileManager.default.removeItem(at: localPath)
-                         print("[Van Uninstall] Deleted: \(localPath.path)")
-                         await engine.sync(source: source, modelContext: modelContext)
-                     } catch {
-                         print("[Van Uninstall] Delete failed: \(error)")
-                         await MainActor.run {
-                             uninstallError = "删除失败: \(error.localizedDescription)"
-                             showingUninstallErrorAlert = true
-                         }
-                     }
-                 }
-             } else {
-                 print("[Van Uninstall] Error: localPath is nil")
-                 uninstallError = "删除失败: 找不到文件路径"
-                 showingUninstallErrorAlert = true
-             }
-        }
-    }
-}
 
-struct EditSourceView: View {
-    let source: SkillSource
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
-    @StateObject private var engine = FlowSyncEngine.shared
-    
-    @State private var name: String
-    @State private var url: String
-    @State private var path: String
-    
-    init(source: SkillSource) {
-        self.source = source
-        _name = State(initialValue: source.name)
-        _url = State(initialValue: source.urlString)
-        _path = State(initialValue: source.localPathString)
-    }
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("信息") {
-                    TextField("名称", text: $name)
-                    if source.typeRaw == SkillSource.SourceType.subscription.rawValue {
-                        TextField("GitHub 地址", text: $url)
-                    } else {
-                        HStack {
-                            TextField("本地路径", text: $path)
-                            Button("选择...") {
-                                let panel = NSOpenPanel()
-                                panel.canChooseFiles = false
-                                panel.canChooseDirectories = true
-                                if panel.runModal() == .OK { path = panel.url?.path ?? path }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("编辑源")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        source.name = name
-                        source.urlString = url
-                        source.localPathString = path
-                        Task { await engine.sync(source: source, modelContext: modelContext) }
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .frame(width: 400, height: 300)
-    }
-}
 
 #Preview {
     ContentView()

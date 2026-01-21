@@ -42,6 +42,7 @@ final class VanSkill {
     var ecosystemRaw: String = "OpenSkills"
     var localPathString: String = ""
     var remoteContentUrlString: String = ""
+    var remoteDirectoryApiUrlString: String = "" // 用于目录级 Skill 的递归下载
     var isRemote: Bool = true
     var categoryRaw: String = "Global" // Global or Project
     var isInstalled: Bool = false
@@ -49,18 +50,20 @@ final class VanSkill {
     
     var localPath: URL? { localPathString.isEmpty ? nil : URL(fileURLWithPath: localPathString) }
     var remoteContentUrl: URL? { URL(string: remoteContentUrlString) }
+    var directoryApiUrl: URL? { URL(string: remoteDirectoryApiUrlString) }
     
     var ecosystem: SkillEcosystem {
         get { SkillEcosystem(rawValue: ecosystemRaw) ?? .openSkills }
         set { ecosystemRaw = newValue.rawValue }
     }
     
-    init(name: String, description: String, ecosystem: SkillEcosystem, remoteUrl: String? = nil) {
+    init(name: String, description: String, ecosystem: SkillEcosystem, remoteUrl: String? = nil, directoryApiUrl: String? = nil) {
         self.name = name
         self.desc = description
         self.ecosystemRaw = ecosystem.rawValue
         self.remoteContentUrlString = remoteUrl ?? ""
-        self.isRemote = remoteUrl != nil
+        self.remoteDirectoryApiUrlString = directoryApiUrl ?? ""
+        self.isRemote = (remoteUrl != nil || directoryApiUrl != nil)
         self.id = UUID()
     }
 }
