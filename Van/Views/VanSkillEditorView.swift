@@ -22,98 +22,121 @@ struct VanSkillEditorView: View {
     
     // Whether the file is local and editable
     var isEditable: Bool {
-        selectedFile != nil && selectedFile?.path.contains("/.agent/skills/") == true
+        guard let url = selectedFile else { return false }
+        // Any local file is potentially editable in this app
+        return url.isFileURL
     }
     
     var body: some View {
-        NavigationSplitView {
-            // Left File List (Only for directory-based Skills)
+        Group {
             if showFileBrowser {
-                List(skillFiles, id: \.self, selection: $selectedFile) { url in
-                    HStack {
-                        Image(systemName: url.hasDirectoryPath ? "folder" : "doc.text")
-                            .foregroundStyle(url.hasDirectoryPath ? .blue : .secondary)
-                        Text(url.lastPathComponent)
-                            .font(.system(size: 11, design: .monospaced))
+                NavigationSplitView {
+                    // Left File List (Only for directory-based Skills)
+                    List(skillFiles, id: \.self, selection: $selectedFile) { url in
+                        HStack {
+                            Image(systemName: url.hasDirectoryPath ? "folder" : "doc.text")
+                                .foregroundStyle(url.hasDirectoryPath ? .blue : .secondary)
+                            Text(url.lastPathComponent)
+                                .font(.system(size: 11, design: .monospaced))
+                        }
+                        .tag(url)
                     }
-                    .tag(url)
+                    .navigationTitle("Files")
+                    #if os(macOS)
+                    .navigationSplitViewColumnWidth(min: 150, ideal: 200, max: 300)
+                    #endif
+                } detail: {
+                    editorContainer
                 }
-                .navigationTitle("Files")
-                #if os(macOS)
-                .navigationSplitViewColumnWidth(min: 150, ideal: 200, max: 300)
-                #endif
             } else {
-                Text("Single File Mode")
-                    .foregroundStyle(.secondary)
-            }
-        } detail: {
-            VStack(spacing: 0) {
-                // Toolbar
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(skill.name)
-                            .font(.headline)
-                        if let selected = selectedFile {
-                            Text(selected.lastPathComponent)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    if isEditable {
-                        Text("(Local)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
-                            .background(Color.green.opacity(0.1))
-                            .cornerRadius(4)
-                    } else {
-                        Text("(Remote Read-only)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    if isEditable {
-                        Button("Save") {
-                            saveContent()
-                        }
-                        .keyboardShortcut("s", modifiers: .command)
-                        .disabled(content == originalContent)
-                    }
-                    
-                    Button("Close") {
-                        dismiss()
-                    }
-                }
-                .padding()
-                .background(Color(nsColor: .controlBackgroundColor))
-                
-                Divider()
-                
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = errorMessage {
-                    ContentUnavailableView("Unable to load content", systemImage: "exclamationmark.triangle", description: Text(error))
-                } else {
-                    // Editor Area
-                    TextEditor(text: $content)
-                        .font(.system(.body, design: .monospaced))
-                        .padding(8)
-                        .disabled(!isEditable)
-                        .scrollContentBackground(.hidden)
-                }
+                editorContainer
             }
         }
-        .onChange(of: selectedFile) { oldFile, newFile in
+        .onChange(of: selectedFile) { _, newFile in
             if let file = newFile, !file.hasDirectoryPath {
                 Task { await readFile(url: file) }
             }
         }
         .task {
             await setupEditor()
+        }
+    }
+    
+    @ViewBuilder
+    private var editorContainer: some View {
+        VStack(spacing: 0) {
+            // Toolbar (Always at top)
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(skill.name)
+                        .font(.headline)
+                    if let selected = selectedFile {
+                        Text(selected.lastPathComponent)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                if isEditable {
+                    Text("Local / Editable")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.1))
+                        .foregroundStyle(.green)
+                        .cornerRadius(4)
+                } else {
+                    Text("Read-only")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1))
+                        .foregroundStyle(.secondary)
+                        .cornerRadius(4)
+                }
+                
+                Spacer()
+                
+                if isEditable {
+                    Button("Save") {
+                        saveContent()
+                    }
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(content == originalContent || isLoading)
+                }
+                
+                Button("Close") {
+                    dismiss()
+                }
+            }
+            .padding()
+            .background(Color(nsColor: .controlBackgroundColor))
+            
+            Divider()
+            
+            if isLoading {
+                VStack {
+                    ProgressView()
+                    Text("Loading content...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = errorMessage {
+                ContentUnavailableView(
+                    "Load Failed",
+                    systemImage: "doc.questionmark",
+                    description: Text(error)
+                )
+            } else {
+                // Editor Area
+                TextEditor(text: $content)
+                    .font(.system(.body, design: .monospaced))
+                    .padding(8)
+                    .disabled(!isEditable)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(nsColor: .textBackgroundColor))
+            }
         }
     }
     
@@ -140,7 +163,10 @@ struct VanSkillEditorView: View {
                     }
                     return
                 } catch {
-                    print("Failed to list local directory: \(error)")
+                    print("[Van Editor] Failed to list local directory at \(localPath.path): \(error)")
+                    await MainActor.run {
+                        self.errorMessage = "Failed to list directory: \(error.localizedDescription)"
+                    }
                 }
             }
             
@@ -175,6 +201,7 @@ struct VanSkillEditorView: View {
     
     private func loadSingleFile() async {
         if let localUrl = skill.localPath {
+            print("[Van Editor] Loading local single file: \(localUrl.path)")
             selectedFile = localUrl
             await readFile(url: localUrl)
         } else if let remoteUrl = skill.remoteContentUrl {
@@ -188,11 +215,17 @@ struct VanSkillEditorView: View {
     private func readFile(url: URL) async {
         if url.isFileURL {
             do {
-                content = try String(contentsOf: url, encoding: .utf8)
-                originalContent = content
-                errorMessage = nil
+                let str = try String(contentsOf: url, encoding: .utf8)
+                await MainActor.run {
+                    self.content = str
+                    self.originalContent = str
+                    self.errorMessage = nil
+                }
             } catch {
-                errorMessage = "Failed to read file: \(error.localizedDescription)"
+                print("[Van Editor] Read failed for \(url.path): \(error)")
+                await MainActor.run {
+                    self.errorMessage = "Failed to read file: \(error.localizedDescription)"
+                }
             }
         } else {
             // Remote file read
@@ -205,13 +238,20 @@ struct VanSkillEditorView: View {
             let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
             let (data, _) = try await URLSession.shared.data(for: request)
             if let str = String(data: data, encoding: .utf8) {
-                content = str
-                originalContent = str
+                await MainActor.run {
+                    self.content = str
+                    self.originalContent = str
+                    self.errorMessage = nil
+                }
             } else {
-                errorMessage = "Failed to decode remote content"
+                await MainActor.run {
+                    self.errorMessage = "Failed to decode remote content"
+                }
             }
         } catch {
-            errorMessage = "Network request failed: \(error.localizedDescription)"
+            await MainActor.run {
+                self.errorMessage = "Network request failed: \(error.localizedDescription)"
+            }
         }
     }
     

@@ -29,7 +29,6 @@ struct SkillRowView: View {
     }
     
     @State private var activeSheet: ActiveSheet?
-    @State private var showDeleteConfirmation = false
 
     struct SkillFileItem: Identifiable {
         let id = UUID()
@@ -39,73 +38,81 @@ struct SkillRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                // Icon
-                Image(systemName: skill.remoteDirectoryApiUrlString.isEmpty ? ecosystemIcon(for: skill.ecosystem) : "folder.fill")
-                    .font(.title2)
-                    .foregroundStyle(skill.remoteDirectoryApiUrlString.isEmpty ? ecosystemColor(for: skill.ecosystem) : .blue)
-                    .frame(width: 32, height: 32)
+            ZStack {
+                // Secondary click layer (background)
+                Button {
+                    activeSheet = .editor
+                } label: {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 
-                // Content Area: Click to open editor
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(skill.name)
-                        .font(.headline)
-                        .lineLimit(1)
-                    
-                    Text(skill.desc)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    
-                    // Tags
-                    HStack {
-                        if !installedIn.isEmpty {
-                            ForEach(installedIn, id: \.self) { sourceName in
-                                Text(sourceName)
-                                    .font(.system(size: 10))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.green.opacity(0.1))
-                                    .foregroundStyle(.green)
-                                    .cornerRadius(4)
+                HStack(alignment: .top, spacing: 12) {
+                    // Left area: Icon + Information
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: skill.remoteDirectoryApiUrlString.isEmpty ? ecosystemIcon(for: skill.ecosystem) : "folder.fill")
+                            .font(.title2)
+                            .foregroundStyle(skill.remoteDirectoryApiUrlString.isEmpty ? ecosystemColor(for: skill.ecosystem) : .blue)
+                            .frame(width: 32, height: 32)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(skill.name)
+                                .font(.headline)
+                                .lineLimit(1)
+                            
+                            Text(skill.desc)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            HStack {
+                                if !installedIn.isEmpty {
+                                    ForEach(installedIn, id: \.self) { sourceName in
+                                        Text(sourceName)
+                                            .font(.system(size: 10))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.green.opacity(0.1))
+                                            .foregroundStyle(.green)
+                                            .cornerRadius(4)
+                                    }
+                                }
+                                Spacer()
                             }
                         }
-                        Spacer()
                     }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    activeSheet = .editor
-                }
-                
-                Spacer()
-                
-                // Actions
-                VStack {
-                    if onInstall != nil && installedIn.isEmpty {
-                        Button(action: { onInstall?() }) {
-                            Image(systemName: "square.and.arrow.down")
+                    .allowsHitTesting(false) // Let the button behind handle it
+                    
+                    Spacer()
+                    
+                    // Right area: Action buttons
+                    VStack(spacing: 8) {
+                        if onInstall != nil && installedIn.isEmpty {
+                            Button(action: { onInstall?() }) {
+                                Image(systemName: "square.and.arrow.down")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Install this Skill")
+                        }
+                        
+                        if onUninstall != nil {
+                            Button(action: { onUninstall?() }) {
+                                Image(systemName: "trash")
+                                    .foregroundStyle(.red)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Uninstall this Skill")
+                        }
+                        
+                        Button(action: { activeSheet = .detail }) {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.blue)
                         }
                         .buttonStyle(.borderless)
-                        .help("Install this Skill")
+                        .help("View Details")
                     }
-                    
-                    if onUninstall != nil {
-                        Button(action: { showDeleteConfirmation = true }) {
-                            Image(systemName: "trash")
-                                .foregroundStyle(.red)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Uninstall this Skill")
-                    }
-                    
-                    Button(action: { activeSheet = .detail }) {
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(.blue)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("View Details")
                 }
             }
             .padding(12)
@@ -155,14 +162,6 @@ struct SkillRowView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
         )
-        .alert("Confirm Uninstall", isPresented: $showDeleteConfirmation) {
-            Button("Uninstall", role: .destructive) {
-                onUninstall?()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Are you sure you want to remove \(skill.name)? This action cannot be undone.")
-        }
         .sheet(item: $activeSheet) { item in
             switch item {
             case .editor:
