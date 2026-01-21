@@ -4,15 +4,15 @@ import SwiftData
 
 @MainActor
 class FlowSyncEngine: ObservableObject {
-    @Published var isSyncing = false // 替代 gallerySkills 作为加载状态指示(可选，或直接由 source.statusRaw 驱动)
+    @Published var isSyncing = false // loading indicator
     static let shared = FlowSyncEngine()
     
     private var syncInProgress = Set<UUID>()
     
-    // 串行队列信号量，防止并发过量
+    // Serial queue to prevent excessive concurrency
     private let syncQueue = DispatchQueue(label: "com.van.sync", qos: .userInitiated)
     
-    /// 统一同步入口：可同步网络源或本地源
+    /// Unified sync entry point: handles both network and local sources
     func sync(source: SkillSource, modelContext: ModelContext) async {
         print("[Van Sync] ========== SYNC CALLED ==========")
         print("[Van Sync] Source: \(source.name)")
@@ -149,33 +149,31 @@ class FlowSyncEngine: ObservableObject {
         let pathComponents = path.components(separatedBy: "/")
         var displayName = fileName.replacingOccurrences(of: ".mdc", with: "").replacingOccurrences(of: ".md", with: "")
         
-        // 核心逻辑：如果这是一个目录型 Skill（发现了 SKILL.md），
-        // 那么 Skill 的名字就是它所在的目录名。
+        // Core logic: if this is a directory-based Skill (SKILL.md found),
+        // then the Skill name is the directory name.
         if ["SKILL", "README"].contains(displayName.uppercased()) {
             if pathComponents.count >= 2 {
                 displayName = pathComponents[pathComponents.count - 2]
             }
         }
         
-        let skill = VanSkill(name: displayName, description: "Remote Skill", ecosystem: fileName.lowercased().hasSuffix(".mdc") ? .cursor : .openSkills, remoteUrl: downloadUrl, directoryApiUrl: directoryApiUrl)
+        let skill = VanSkill(name: displayName, description: "Remote Skill", ecosystem: fileName.lowercased().hasSuffix(".mdc") ? .cursor : .openSkills, remoteUrl: downloadUrl, directoryApiUrl: directoryApiUrl, isDirectory: directoryApiUrl != nil)
         skill.sourceId = source.id
         skill.categoryRaw = SkillCategory.global.rawValue
         
-        // 分组路径逻辑：1:1 还原 GitHub 目录层级
-        // 规则：groupPath 是文件（或 Skill 目录）之前的完整路径。
-        // 例如：skills/algorithmic-art/SKILL.md -> Group: skills, Name: algorithmic-art
-        // 例如：rules/frontend/react.md -> Group: rules/frontend, Name: react
+        // Group path logic: 1:1 replica of GitHub directory hierarchy
+        // Rule: groupPath is the path preceding the file (or Skill directory).
         
         var components = pathComponents
-        if !components.isEmpty { components.removeLast() } // 移除文件名 (e.g. SKILL.md 或 react.md)
+        if !components.isEmpty { components.removeLast() } // Remove file name
         
-        // 如果是目录型 Skill，我们还需要再移除一级（即 Skill 自己的目录名），
-        // 这样它就会显示在父级目录下，而不是显示在 “自己名字” 的分组下。
+        // For directory skills, we remove one more level (the skill's own directory name),
+        // so it appears in the parent group instead of its own name group.
         if (fileName.uppercased() == "SKILL.MD" || fileName.uppercased() == "SKILL.MDC") && !components.isEmpty {
             components.removeLast()
         }
         
-        // 彻底移除任何 strip "skills", "rules" 等的操作，1:1 保持原样。
+        // Maintain 1:1 structure without stripping "skills", "rules", etc.
         skill.groupPath = components.joined(separator: "/")
         
         print("[Van Sync] [SKILL] Generated: \(displayName), group: '\(skill.groupPath)', path: \(path)")
@@ -207,14 +205,14 @@ class FlowSyncEngine: ObservableObject {
         
         var results: [VanSkill] = []
         
-        // 递归遍历函数
+        // Recursive scan function
         func scanDirectory(at dir: URL, relativeTo root: URL) {
             let keys: [URLResourceKey] = [.isDirectoryKey]
             guard let items = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else {
                 return
             }
             
-            // 1. 检查当前目录下是否有 SKILL.md 或 SKILL.mdc
+            // 1. Check for SKILL.md or SKILL.mdc
             if let skillFile = items.first(where: {
                 let name = $0.lastPathComponent.uppercased()
                 return name == "SKILL.MD" || name == "SKILL.MDC"
@@ -226,32 +224,65 @@ class FlowSyncEngine: ObservableObject {
                 let content = (try? String(contentsOf: skillFile, encoding: .utf8)) ?? ""
                 let (desc, _) = extractMetadata(from: content)
                 
-                let skill = VanSkill(name: displayName, description: desc.isEmpty ? "本地目录 Skill" : desc, ecosystem: ext == "mdc" ? .cursor : .openSkills)
+                let skill = VanSkill(name: displayName, description: desc.isEmpty ? "Local Directory Skill" : desc, ecosystem: ext == "mdc" ? .cursor : .openSkills)
                 skill.localPathString = skillDir.path
                 skill.sourceId = source.id
                 skill.categoryRaw = SkillCategory.project.rawValue
                 skill.isInstalled = true
+                skill.isDirectory = true
                 
-                // 计算 groupPath (dir 之前的路径)
+                // Calculate groupPath
                 let components = dir.pathComponents
                 let rootComponents = root.pathComponents
                 if components.count > rootComponents.count {
-                    // 对于目录型 Skill，我们移除最后一级（即 Skill 自己的目录名）
+                    // For directory skills, remove the skill's own directory name
                     let relativeComponents = Array(components[rootComponents.count..<components.count-1])
                     skill.groupPath = relativeComponents.joined(separator: "/")
                 }
                 
                 results.append(skill)
                 print("[Van Sync] [LOCAL] Found directory skill: \(displayName) at \(dir.path)")
-                return // 发现目录型 Skill，停止递归
+                return // Stop recursing here
             }
             
-            // 2. 否则继续递归子目录
+            // 2. Check for individual .md or .mdc files (File-based Skill)
             for itemURL in items {
-                let resourceValues = try? itemURL.resourceValues(forKeys: Set(keys))
+                let name = itemURL.lastPathComponent
+                let isDir = (try? itemURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 
-                if resourceValues?.isDirectory == true {
-                    // 避免递归知名的大型无关目录
+                if !isDir {
+                    let ext = itemURL.pathExtension.lowercased()
+                    if (ext == "mdc" || ext == "md") && name.uppercased() != "SKILL.MD" && name.uppercased() != "SKILL.MDC" {
+                        let displayName = itemURL.deletingPathExtension().lastPathComponent
+                        let content = (try? String(contentsOf: itemURL, encoding: .utf8)) ?? ""
+                        let (desc, _) = extractMetadata(from: content)
+                        
+                        let skill = VanSkill(name: displayName, description: desc.isEmpty ? "Local Skill" : desc, ecosystem: ext == "mdc" ? .cursor : .openSkills)
+                        skill.localPathString = itemURL.path
+                        skill.sourceId = source.id
+                        skill.categoryRaw = SkillCategory.project.rawValue
+                        skill.isInstalled = true
+                        skill.isDirectory = false
+                        
+                        // Calculate groupPath
+                        let components = itemURL.pathComponents
+                        let rootComponents = root.pathComponents
+                        if components.count > rootComponents.count {
+                            // Path minus root and filename = relative group folders
+                            let relativeComponents = Array(components[rootComponents.count..<components.count-1])
+                            skill.groupPath = relativeComponents.joined(separator: "/")
+                        }
+                        
+                        results.append(skill)
+                        print("[Van Sync] [LOCAL] Found file skill: \(displayName) at \(itemURL.path)")
+                    }
+                }
+            }
+            
+            // 3. Continue recursing into subdirectories
+            for itemURL in items {
+                let isDir = (try? itemURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                if isDir {
                     let name = itemURL.lastPathComponent.lowercased()
                     if !name.hasPrefix(".") && !["node_modules", "bin", "tests", "dist", "build", "docs"].contains(name) {
                         scanDirectory(at: itemURL, relativeTo: root)
@@ -276,12 +307,12 @@ class FlowSyncEngine: ObservableObject {
         }
     }
     
-    // 增量更新逻辑：写入 SwiftData
+    // Incremental update logic: write to SwiftData
     @MainActor
     private func mergeSkills(_ newSkills: [VanSkill], for source: SkillSource, modelContext: ModelContext) {
         print("[Van Sync] [MERGE] Starting merge for source: \(source.name), incoming skills: \(newSkills.count)")
         
-        // 1. 获取当前数据库中该源的所有 Skill
+        // 1. Get all skills for this source from the current database
         let sourceId = source.id
         var existingSkills: [VanSkill] = []
         do {
@@ -298,27 +329,28 @@ class FlowSyncEngine: ObservableObject {
     
         for newSkill in newSkills {
             if let existing = existingSkills.first(where: { $0.name == newSkill.name && $0.groupPath == newSkill.groupPath }) {
-                // 更新
+                // Update
                 existing.remoteContentUrlString = newSkill.remoteContentUrlString
                 existing.remoteDirectoryApiUrlString = newSkill.remoteDirectoryApiUrlString
                 existing.localPathString = newSkill.localPathString
                 existing.ecosystem = newSkill.ecosystem
                 existing.isInstalled = newSkill.isInstalled
+                existing.isDirectory = newSkill.isDirectory
                 
-                if (existing.desc == "Remote Skill" || existing.desc == "本地 Skill") && newSkill.desc != "Remote Skill" && newSkill.desc != "本地 Skill" {
+                if (existing.desc == "Remote Skill" || existing.desc == "Local Skill") && newSkill.desc != "Remote Skill" && newSkill.desc != "Local Skill" {
                     existing.desc = newSkill.desc
                 }
                 
                 activeSkillIds.insert(existing.id)
             } else {
-                // 新增
+                // Insert new
                 modelContext.insert(newSkill)
                 activeSkillIds.insert(newSkill.id)
                 print("[Van Sync] [MERGE] Inserted new skill: \(newSkill.name)")
             }
         }
     
-        // 2. 清理过期的 Skills (不在本次 Sync 结果中的)
+        // 2. Cleanup stale skills (not in current sync results)
         for existing in existingSkills {
             if !activeSkillIds.contains(existing.id) {
                 print("[Van Sync] [MERGE] Deleting stale skill: \(existing.name)")
@@ -326,7 +358,7 @@ class FlowSyncEngine: ObservableObject {
             }
         }
         
-        // 保存以便 UI 立即反映
+        // Save to reflect in UI immediately
         do {
             try modelContext.save()
             print("[Van Sync] [MERGE] DB save successful")
@@ -349,14 +381,14 @@ class FlowSyncEngine: ObservableObject {
         let lines = content.components(separatedBy: .newlines)
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            // 匹配 YAML frontmatter description:
+            // Match YAML frontmatter description:
             if trimmed.hasPrefix("description:") {
                 let parts = line.split(separator: ":", maxSplits: 1)
                 if parts.count > 1 {
                     description = String(parts[1])
                 }
             }
-            // 匹配 @description 标记
+            // Match @description marker
             else if line.contains("@description") {
                 let parts = line.split(separator: " ", maxSplits: 1)
                 if parts.count > 1 {
@@ -365,12 +397,12 @@ class FlowSyncEngine: ObservableObject {
             }
             
             if !description.isEmpty {
-                // 深度清洗
+                // Deep clean
                 description = description
                     .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
-                    .replacingOccurrences(of: "\\n", with: " ") // 移除转义换行
+                    .replacingOccurrences(of: "\\n", with: " ") // Remove escaped newlines
                 
-                // 移除 Markdown 符号
+                // Remove Markdown markers
                 if description.hasPrefix(">") { description.removeFirst() }
                 
                 break
@@ -402,8 +434,8 @@ class FlowSyncEngine: ObservableObject {
         if !skill.groupPath.isEmpty {
             var relativeComponents = skill.groupPath.components(separatedBy: "/")
             
-            // 路径去重逻辑：检查 groupPath 的开头是否与 subFolder 的结尾相同
-            // 例如：subFolder = ".agent/skills", groupPath = "skills/art" -> 去掉 "skills/"
+            // Path deduplication logic: check if groupPath starts with subFolder's suffix
+            // Example: subFolder = ".agent/skills", groupPath = "skills/art" -> Remove "skills/"
             if let lastSub = subFolder.components(separatedBy: "/").last {
                 if relativeComponents.first?.lowercased() == lastSub.lowercased() {
                     relativeComponents.removeFirst()
@@ -415,7 +447,7 @@ class FlowSyncEngine: ObservableObject {
             }
         }
         
-        // 如果是目录型 Skill，我们需要在目标位置创建一个以 Skill 名称命名的目录
+        // For directory-based Skills, create a directory named after the Skill
         if !skill.remoteDirectoryApiUrlString.isEmpty {
             targetPathComponents.append(skill.name)
         }
@@ -424,11 +456,11 @@ class FlowSyncEngine: ObservableObject {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         
         if !skill.remoteDirectoryApiUrlString.isEmpty {
-            // 目录递归下载
+            // Recursive directory download
             print("[Van Install] Directory Skill detected. Recursively downloading from: \(skill.remoteDirectoryApiUrlString)")
             try await downloadDirectoryRecursive(apiUrl: skill.remoteDirectoryApiUrlString, targetFolder: folder)
         } else if let remoteUrl = skill.remoteContentUrl {
-            // 单文件下载
+            // Single file download
             var request = URLRequest(url: remoteUrl)
             request.addValue("VanApp/1.0", forHTTPHeaderField: "User-Agent")
             let (data, _) = try await URLSession.shared.data(for: request)
@@ -470,12 +502,12 @@ class FlowSyncEngine: ObservableObject {
 
 
     
-    /// 批量获取远程 Skills 的元数据（描述）
+    /// Batch fetch remote Skills metadata (descriptions)
     func fetchMetadataForSkills(_ skills: [VanSkill], modelContext: ModelContext) async {
         print("[Van Metadata] Starting batch fetch for \(skills.count) skills")
         
         await withTaskGroup(of: Void.self) { group in
-            // 每次最多并发 5 个请求
+            // Max 5 concurrent requests
             let maxConcurrent = 5
             var active = 0
             
@@ -495,7 +527,7 @@ class FlowSyncEngine: ObservableObject {
             }
         }
         
-        // 保存更改
+        // Save changes
         await MainActor.run {
             try? modelContext.save()
         }

@@ -16,7 +16,7 @@ class OpenSkillsAdapter: SkillAdapter {
     func parse(at url: URL) async throws -> [VanSkill] {
         let content = try String(contentsOf: url, encoding: .utf8)
         
-        // 解析 YAML Frontmatter (简单版正则)
+        // Parse YAML Frontmatter (simple regex version)
         let name = match(pattern: "name:\\s*(.*)", in: content) ?? url.deletingPathExtension().lastPathComponent
         let desc = match(pattern: "description:\\s*(.*)", in: content) ?? "No description"
         
@@ -37,7 +37,7 @@ class OpenSkillsAdapter: SkillAdapter {
     }
     
     func write(_ skills: [VanSkill], to url: URL) async throws {
-        // TODO: 实现逻辑
+        // TODO: Implement logic
     }
 }
 
@@ -48,11 +48,11 @@ class CursorAdapter: SkillAdapter {
     }
     
     func parse(at url: URL) async throws -> [VanSkill] {
-        // TODO: 实现 .mdc 解析
+        // TODO: Implement .mdc parsing
         return []
     }
     
     func write(_ skills: [VanSkill], to url: URL) async throws {
-        // TODO: 实现逻辑
+        // TODO: Implement logic
     }
 }

@@ -24,7 +24,7 @@ struct SkillGroupListView: View {
     var body: some View {
         ScrollView {
             if filteredSkills.isEmpty {
-                ContentUnavailableView("无 Skill", systemImage: "folder.badge.minus", description: Text("搜索结果下没有发现 Skill。"))
+                ContentUnavailableView("No Skills", systemImage: "folder.badge.minus", description: Text("No skills found in search results."))
                     .padding(.top, 100)
             } else {
                 let grouped = Dictionary(grouping: filteredSkills, by: { $0.groupPath })
@@ -50,7 +50,7 @@ struct SkillGroupListView: View {
                                     Spacer()
                                     
                                     if source.typeRaw == SkillSource.SourceType.subscription.rawValue {
-                                        Button("安装此组") { onInstallGroupRequest(grouped[group] ?? []) }
+                                        Button("Install Group") { onInstallGroupRequest(grouped[group] ?? []) }
                                             .buttonStyle(.bordered).controlSize(.small)
                                     }
                                 }
@@ -71,11 +71,11 @@ struct SkillGroupListView: View {
         .onChange(of: skills.count) { _, _ in Task { await updateData() } }
     }
     
-    // 过滤逻辑
+    // Filtering logic
     private var filteredSkills: [VanSkill] {
         var result = skills
         
-        // 搜索过滤
+        // Search filtering
         if !searchText.isEmpty {
             let lower = searchText.lowercased()
             result = result.filter { $0.name.lowercased().contains(lower) || $0.desc.lowercased().contains(lower) }

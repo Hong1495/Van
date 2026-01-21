@@ -19,8 +19,8 @@ actor SkillDataActor {
     func loadDTOs(ids: [PersistentIdentifier]) -> [SkillSortDTO] {
         var dtos: [SkillSortDTO] = []
         
-        // 使用 modelContext.model(for:) 在后台线程加载对象
-        // 这会将 I/O 操作从主线程移开
+        // Use modelContext.model(for:) to load objects on background thread
+        // This moves I/O operations away from the main thread
         for id in ids {
             if let skill = modelContext.model(for: id) as? VanSkill {
                 dtos.append(SkillSortDTO(

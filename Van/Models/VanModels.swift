@@ -5,9 +5,9 @@ import SwiftData
 final class SkillSource {
     var id: UUID = UUID()
     var name: String = ""
-    var urlString: String = "" // 用于 subscription 类型
+    var urlString: String = "" // For subscription types
     var typeRaw: String = "subscription"
-    var localPathString: String = "" // 用于 project 和 ide 类型
+    var localPathString: String = "" // For project and ide types
     var lastSynced: Date?
     var statusRaw: String = "active"
     
@@ -23,9 +23,9 @@ final class SkillSource {
     }
     
     enum SourceType: String, CaseIterable {
-        case project = "project"       // 本地项目目录
-        case ide = "ide"               // 全局 IDE 环境 (Antigravity, Cursor, Claude 等)
-        case subscription = "subscription" // 网络订阅源 (GitHub 等)
+        case project = "project"       // Local project directory
+        case ide = "ide"               // Global IDE environment (Antigravity, Cursor, Claude, etc.)
+        case subscription = "subscription" // Network subscription source (GitHub, etc.)
     }
 }
 
@@ -35,16 +35,16 @@ final class VanSkill {
     var id: UUID = UUID()
     var name: String = ""
     var desc: String = ""
-    var translatedDesc: String? // 持久化翻译结果
-    var groupPath: String = "" // 分组路径，如 "frontend/react"
+    var groupPath: String = "" // Group path, e.g., "frontend/react"
     var version: String?
     var sourceId: UUID?
     var ecosystemRaw: String = "OpenSkills"
     var localPathString: String = ""
     var remoteContentUrlString: String = ""
-    var remoteDirectoryApiUrlString: String = "" // 用于目录级 Skill 的递归下载
+    var remoteDirectoryApiUrlString: String = "" // For recursive download of directory-based Skills
     var isRemote: Bool = true
     var categoryRaw: String = "Global" // Global or Project
+    var isDirectory: Bool = false
     var isInstalled: Bool = false
     var isActive: Bool = true
     
@@ -57,13 +57,14 @@ final class VanSkill {
         set { ecosystemRaw = newValue.rawValue }
     }
     
-    init(name: String, description: String, ecosystem: SkillEcosystem, remoteUrl: String? = nil, directoryApiUrl: String? = nil) {
+    init(name: String, description: String, ecosystem: SkillEcosystem, remoteUrl: String? = nil, directoryApiUrl: String? = nil, isDirectory: Bool = false) {
         self.name = name
         self.desc = description
         self.ecosystemRaw = ecosystem.rawValue
         self.remoteContentUrlString = remoteUrl ?? ""
         self.remoteDirectoryApiUrlString = directoryApiUrl ?? ""
         self.isRemote = (remoteUrl != nil || directoryApiUrl != nil)
+        self.isDirectory = isDirectory || (directoryApiUrl != nil)
         self.id = UUID()
     }
 }

@@ -27,7 +27,7 @@ struct SourceDetailView: View {
         let sid = source.id
         self._viewModel = State(initialValue: SourceDetailViewModel(source: source))
         
-        // 拆分复杂表达式以解决编译性能问题
+        // Splitting complex expressions to resolve compilation performance issues
         let predicate = #Predicate<VanSkill> { skill in
             skill.sourceId == sid
         }
@@ -38,31 +38,31 @@ struct SourceDetailView: View {
         VStack(spacing: 0) {
             contentSection
         }
-        .searchable(text: $searchText, prompt: "搜索 \(source.name)...")
+        .searchable(text: $searchText, prompt: "Search \(source.name)...")
         .navigationTitle(source.name)
         .toolbar { toolbarContent }
         .sheet(isPresented: $showingEditSheet) {
              EditSourceView(source: source)
         }
-        .confirmationDialog("安装到...", isPresented: $viewModel.showingInstallTargetPicker, titleVisibility: .visible) {
+        .confirmationDialog("Install to...", isPresented: $viewModel.showingInstallTargetPicker, titleVisibility: .visible) {
             installTargetButtons
         } message: {
             Text(viewModel.installPromptMessage)
         }
-        .confirmationDialog("确认删除", isPresented: $viewModel.showingUninstallConfirm, titleVisibility: .visible) {
+        .confirmationDialog("Confirm Uninstall", isPresented: $viewModel.showingUninstallConfirm, titleVisibility: .visible) {
             uninstallConfirmButtons
         } message: {
             Text(viewModel.deleteConfirmationMessage)
         }
-        .alert("安装失败", isPresented: $viewModel.showingInstallError) {
-            Button("确定", role: .cancel) {}
+        .alert("Install Failed", isPresented: $viewModel.showingInstallError) {
+            Button("OK", role: .cancel) {}
         } message: {
-            Text(viewModel.installError ?? "未知错误")
+            Text(viewModel.installError ?? "Unknown Error")
         }
-        .alert("删除失败", isPresented: $viewModel.showingUninstallError) {
-            Button("确定", role: .cancel) {}
+        .alert("Uninstall Failed", isPresented: $viewModel.showingUninstallError) {
+            Button("OK", role: .cancel) {}
         } message: {
-            Text(viewModel.uninstallError ?? "未知错误")
+            Text(viewModel.uninstallError ?? "Unknown Error")
         }
         .task {
             // Initial sync check
@@ -75,18 +75,18 @@ struct SourceDetailView: View {
     @ViewBuilder
     private var contentSection: some View {
         if isLoadingState {
-             ContentUnavailableView { ProgressView() } description: { Text("正在同步...") }
+             ContentUnavailableView { ProgressView() } description: { Text("Syncing...") }
         } else if isErrorState {
             ContentUnavailableView {
                 Image(systemName: "exclamationmark.triangle").foregroundStyle(.red)
             } description: { Text(source.statusRaw) } actions: {
-                Button("重试") { 
+                Button("Retry") { 
                     Task { await viewModel.sync(modelContext: modelContext) } 
                 }
             }
         } else {
             if skills.isEmpty {
-                ContentUnavailableView("无 Skill", systemImage: "magnifyingglass", description: Text("点击工具栏刷新按钮或右键同步。"))
+                ContentUnavailableView("No Skills", systemImage: "magnifyingglass", description: Text("Click the refresh button in the toolbar or right-click to sync."))
             } else {
                 SkillGroupListView(
                     source: source,
@@ -112,7 +112,7 @@ struct SourceDetailView: View {
                     await engine.sync(source: source, modelContext: modelContext)
                 }
             } label: {
-                Label("同步", systemImage: "arrow.clockwise")
+                Label("Sync", systemImage: "arrow.clockwise")
             }
             .disabled(viewModel.isSyncing)
             .keyboardShortcut("r", modifiers: .command)
@@ -120,8 +120,8 @@ struct SourceDetailView: View {
         
         ToolbarItem(placement: .primaryAction) {
             Menu {
-                Button("编辑源...") { showingEditSheet = true }
-                Button("在 Finder 中显示") { revealInFinder() }
+                Button("Edit Source...") { showingEditSheet = true }
+                Button("Reveal in Finder") { revealInFinder() }
                     .disabled(source.localPathString.isEmpty)
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -140,15 +140,15 @@ struct SourceDetailView: View {
                 Task { await viewModel.confirmInstall(to: target, modelContext: modelContext) }
             }
         }
-        Button("取消", role: .cancel) {}
+        Button("Cancel", role: .cancel) {}
     }
 
     @ViewBuilder
     private var uninstallConfirmButtons: some View {
-        Button("删除", role: .destructive) {
+        Button("Uninstall", role: .destructive) {
             Task { await viewModel.confirmUninstall(modelContext: modelContext) }
         }
-        Button("取消", role: .cancel) {}
+        Button("Cancel", role: .cancel) {}
     }
     
     var isLoadingState: Bool {

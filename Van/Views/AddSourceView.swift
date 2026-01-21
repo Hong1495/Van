@@ -12,11 +12,11 @@ struct AddSourceView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Text("添加订阅")
+            Text("Add Subscription")
                 .font(.headline)
             
             Form {
-                TextField("名称:", text: $name)
+                TextField("Name:", text: $name)
                     .textFieldStyle(.roundedBorder)
                 
                 TextField("URL:", text: $url)
@@ -28,7 +28,7 @@ struct AddSourceView: View {
                         }
                     }
                 
-                Text("输入 GitHub 仓库地址，例如:\nhttps://github.com/owner/repo")
+                Text("Enter GitHub repository URL, for example:\nhttps://github.com/owner/repo")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -37,10 +37,10 @@ struct AddSourceView: View {
             
             HStack {
                 Spacer()
-                Button("取消") { dismiss() }
+                Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 
-                Button("添加") {
+                Button("Add") {
                     let newSource = SkillSource(name: name, url: url, type: type)
                     modelContext.insert(newSource)
                     Task { await engine.sync(source: newSource, modelContext: modelContext) }

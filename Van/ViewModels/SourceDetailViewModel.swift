@@ -71,7 +71,7 @@ class SourceDetailViewModel {
             }
         } catch {
             await MainActor.run {
-                self.installError = "安装失败: \(error.localizedDescription)"
+                self.installError = "Install failed: \(error.localizedDescription)"
                 self.showingInstallError = true
             }
         }
@@ -107,7 +107,7 @@ class SourceDetailViewModel {
         
         guard let localPath = skill.localPath else {
             await MainActor.run {
-                self.uninstallError = "删除失败: 文件路径不存在"
+                self.uninstallError = "Uninstall failed: File path not found"
                 self.showingUninstallError = true
             }
             return
@@ -124,7 +124,7 @@ class SourceDetailViewModel {
         } catch {
             print("[Van] Uninstall failed: \(error)")
             await MainActor.run {
-                self.uninstallError = "删除文件失败: \(error.localizedDescription)"
+                self.uninstallError = "Failed to delete file: \(error.localizedDescription)"
                 self.showingUninstallError = true
             }
         }
@@ -134,18 +134,18 @@ class SourceDetailViewModel {
     
     var deleteConfirmationMessage: String {
         if let group = groupToUninstall {
-            return "确定要删除该组下的 \(group.count) 个 Skill 吗？此操作将永久删除文件。"
+            return "Are you sure you want to delete these \(group.count) skills? This action will permanently remove the files."
         } else if let skill = skillToUninstall {
-            return "确定要删除 '\(skill.name)' 吗？此操作将永久删除文件。"
+            return "Are you sure you want to delete '\(skill.name)'? This action will permanently remove the files."
         }
-        return "确定要删除吗？"
+        return "Are you sure you want to delete?"
     }
     
     var installPromptMessage: String {
         if let group = groupToInstall {
-            return "将该组内的 \(group.count) 个 Skill 安装到哪里？"
+            return "Where would you like to install these \(group.count) skills?"
         } else {
-            return "选择要将 '\(skillToInstall?.name ?? "")' 安装到的位置"
+            return "Select a location to install '\(skillToInstall?.name ?? "")'"
         }
     }
 }

@@ -29,7 +29,7 @@ struct SourceIconView: View {
     }
     
     private func fetchIcon() async {
-        // 本地源：获取文件图标
+        // Local source: get file icon
         if source.typeRaw != SkillSource.SourceType.subscription.rawValue {
             let path = source.localPathString
             if !path.isEmpty {
@@ -39,8 +39,8 @@ struct SourceIconView: View {
             return
         }
         
-        // 远程源：尝试解析 GitHub Avatar
-        // 假设 URL 格式为 https://github.com/owner/repo
+        // Remote source: parse GitHub avatar
+        // Assume URL format: https://github.com/owner/repo
         if let url = URL(string: source.urlString),
            url.host() == "github.com" {
             let components = url.pathComponents
@@ -48,7 +48,7 @@ struct SourceIconView: View {
                 let owner = components[1]
                 let avatarUrl = URL(string: "https://github.com/\(owner).png?size=64")!
                 
-                // 简单缓存策略：使用 URLCache
+                // Simple cache policy: use URLCache
                 let request = URLRequest(url: avatarUrl, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 10)
                 
                 if let (data, _) = try? await URLSession.shared.data(for: request),

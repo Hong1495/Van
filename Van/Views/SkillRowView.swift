@@ -13,15 +13,15 @@ import Translation
 /// Skill List Row
 struct SkillRowView: View {
     @Bindable var skill: VanSkill
-    let installedIn: [String] // 显示安装到的位置
+    let installedIn: [String] // Display installation locations
     var onInstall: (() -> Void)? = nil
     var onUninstall: (() -> Void)? = nil
     
-    // UI 状态
+    // UI Status
     @State private var contents: [SkillFileItem] = []
     @State private var isLoadingContents = false
     
-    // 合并 Sheet 状态以防止冲突
+    // Sheet Status
     enum ActiveSheet: Identifiable {
         case editor
         case detail
@@ -30,12 +30,6 @@ struct SkillRowView: View {
     
     @State private var activeSheet: ActiveSheet?
     @State private var showDeleteConfirmation = false
-    
-    // Translation API State
-    @State private var translatedDesc: String?
-    #if canImport(Translation)
-    @State private var translationConfig: TranslationSession.Configuration?
-    #endif
 
     struct SkillFileItem: Identifiable {
         let id = UUID()
@@ -46,26 +40,25 @@ struct SkillRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                // 图标
+                // Icon
                 Image(systemName: skill.remoteDirectoryApiUrlString.isEmpty ? ecosystemIcon(for: skill.ecosystem) : "folder.fill")
                     .font(.title2)
                     .foregroundStyle(skill.remoteDirectoryApiUrlString.isEmpty ? ecosystemColor(for: skill.ecosystem) : .blue)
                     .frame(width: 32, height: 32)
                 
-                // 内容区域：点击打开内置编辑器
+                // Content Area: Click to open editor
                 VStack(alignment: .leading, spacing: 4) {
                     Text(skill.name)
                         .font(.headline)
                         .lineLimit(1)
                     
-                    // 列表页只显示原生描述
                     Text(skill.desc)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     
-                    // 标签区域
+                    // Tags
                     HStack {
                         if !installedIn.isEmpty {
                             ForEach(installedIn, id: \.self) { sourceName in
@@ -81,21 +74,21 @@ struct SkillRowView: View {
                         Spacer()
                     }
                 }
-                .contentShape(Rectangle()) // 扩大点击区域
+                .contentShape(Rectangle())
                 .onTapGesture {
                     activeSheet = .editor
                 }
                 
                 Spacer()
                 
-                // 操作按钮
+                // Actions
                 VStack {
                     if onInstall != nil && installedIn.isEmpty {
                         Button(action: { onInstall?() }) {
                             Image(systemName: "square.and.arrow.down")
                         }
                         .buttonStyle(.borderless)
-                        .help("安装此 Skill")
+                        .help("Install this Skill")
                     }
                     
                     if onUninstall != nil {
@@ -104,22 +97,21 @@ struct SkillRowView: View {
                                 .foregroundStyle(.red)
                         }
                         .buttonStyle(.borderless)
-                        .help("卸载此 Skill")
+                        .help("Uninstall this Skill")
                     }
                     
-                    // 恢复显式的详情按钮
                     Button(action: { activeSheet = .detail }) {
                         Image(systemName: "info.circle")
                             .foregroundStyle(.blue)
                     }
                     .buttonStyle(.borderless)
-                    .help("查看详情与翻译")
+                    .help("View Details")
                 }
             }
             .padding(12)
             
-            // 目录内容展示区域
-            if !skill.remoteDirectoryApiUrlString.isEmpty || skill.isInstalled {
+            // Directory Contents Preview
+            if skill.isDirectory {
                 VStack(alignment: .leading, spacing: 4) {
                     Divider()
                         .padding(.vertical, 4)
@@ -129,12 +121,11 @@ struct SkillRowView: View {
                             .controlSize(.small)
                             .padding(.vertical, 4)
                     } else if contents.isEmpty {
-                        Text("无内容或正在同步")
+                        Text("No contents")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 2)
                     } else {
-                        // 简单的文件列表展示
                         FlowLayout(spacing: 8) {
                             ForEach(contents) { item in
                                 HStack(spacing: 4) {
@@ -164,79 +155,28 @@ struct SkillRowView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
         )
-        // 删除确认弹窗
-        .alert("确认删除", isPresented: $showDeleteConfirmation) {
-            Button("删除", role: .destructive) {
+        .alert("Confirm Uninstall", isPresented: $showDeleteConfirmation) {
+            Button("Uninstall", role: .destructive) {
                 onUninstall?()
             }
-            Button("取消", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("确定要删除 \(skill.name) 吗？此操作不可撤销。")
+            Text("Are you sure you want to remove \(skill.name)? This action cannot be undone.")
         }
-        // 统一处理为大尺寸 Sheet，提供沉浸式编辑体验 (macOS 不支持 fullScreenCover)
         .sheet(item: $activeSheet) { item in
             switch item {
             case .editor:
                 VanSkillEditorView(skill: skill)
                     .frame(minWidth: 1000, minHeight: 700) 
             case .detail:
-                #if canImport(Translation)
                 DetailSheetView(skill: skill,
-                               translatedDesc: $translatedDesc,
-                               translationConfig: $translationConfig,
-                               fetchRemoteMetadata: fetchRemoteMetadata,
-                               triggerTranslation: triggerTranslation)
-                #else
-                DetailSheetView(skill: skill,
-                               translatedDesc: $translatedDesc,
-                               fetchRemoteMetadata: fetchRemoteMetadata,
-                               triggerTranslation: triggerTranslation)
-                #endif
+                                fetchRemoteMetadata: fetchRemoteMetadata)
             }
-        }
-        
-        #if canImport(Translation)
-        .translationTask(translationConfig) { session in
-            do {
-                if !skill.desc.isEmpty {
-                    let response = try await session.translate(skill.desc)
-                    let result = response.targetText
-                    await MainActor.run {
-                        translatedDesc = result
-                        skill.translatedDesc = result
-                    }
-                }
-            } catch {
-                print("Translation failed: \(error)")
-            }
-        }
-        #endif
-    }
-    
-    private func triggerTranslation() async {
-        if #available(macOS 15.0, *) {
-            #if canImport(Translation)
-            // 仅当描述包含非中文且非空时才尝试翻译
-            // 且仅当没有缓存翻译时
-            if skill.translatedDesc == nil && !skill.desc.isEmpty && !skill.desc.hasPrefix("Remote Skill") {
-                // 检查语言模型状态，避免频繁弹窗
-                let source = Locale.Language(identifier: "en")
-                let target = Locale.Language(identifier: "zh-Hans")
-                let availability = LanguageAvailability()
-                
-                // 异步检查状态
-                if await availability.status(from: source, to: target) == .installed {
-                    translationConfig = .init(source: source, target: target)
-                }
-            }
-            #endif
         }
     }
     
-    // 复用 FlowSyncEngine 的提取逻辑（简化版）
     private func fetchRemoteMetadata() async {
         guard let url = skill.remoteContentUrl else { return }
-        // 简单请求，依赖系统缓存
         var request = URLRequest(url: url)
         request.addValue("VanApp/1.0", forHTTPHeaderField: "User-Agent")
         
@@ -248,8 +188,6 @@ struct SkillRowView: View {
                     await MainActor.run {
                         skill.desc = desc
                     }
-                    // 更新描述后触发翻译
-                    await triggerTranslation()
                 }
             }
         } catch {
@@ -277,16 +215,16 @@ struct SkillRowView: View {
         return (description, "")
     }
     
-    // 加载目录内容逻辑
+    // Logic to load directory contents
     private func loadSkillContents() async {
-        guard contents.isEmpty else { return }
+        guard skill.isDirectory, contents.isEmpty else { return }
         isLoadingContents = true
         defer { isLoadingContents = false }
         
-        // 1. 如果是本地已安装的，读取本地目录
+        // 1. If installed locally, read local directory
         if let localPath = skill.localPath, FileManager.default.fileExists(atPath: localPath.path) {
-            let isDir = (try? localPath.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            if isDir {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: localPath.path, isDirectory: &isDir), isDir.boolValue {
                 let fileUrls = (try? FileManager.default.contentsOfDirectory(at: localPath, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
                 self.contents = fileUrls.map { url in
                     let isSubDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
@@ -296,10 +234,10 @@ struct SkillRowView: View {
             }
         }
         
-        // 2. 如果是远程目录型 Skill
-        if !skill.remoteDirectoryApiUrlString.isEmpty {
+        // 2. If it's a remote directory-based Skill
+        if let apiUrl = skill.directoryApiUrl {
             do {
-                let items = try await FlowSyncEngine.shared.fetchGithubItems(url: skill.remoteDirectoryApiUrlString)
+                let items = try await FlowSyncEngine.shared.fetchGithubItems(url: apiUrl.absoluteString)
                 self.contents = items.compactMap { item in
                     guard let name = item["name"] as? String, let type = item["type"] as? String else { return nil }
                     return SkillFileItem(name: name, isDir: type == "dir")
@@ -311,7 +249,7 @@ struct SkillRowView: View {
     }
 }
 
-// 简单的流式布局
+// Simple flow layout
 struct FlowLayout: Layout {
     var spacing: CGFloat
     

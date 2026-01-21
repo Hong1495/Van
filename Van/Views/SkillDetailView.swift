@@ -13,10 +13,10 @@ struct SkillDetailView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 if isLoading {
-                    ProgressView("加载中...")
+                    ProgressView("Loading...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = errorMessage {
-                    ContentUnavailableView("加载失败", systemImage: "exclamationmark.triangle", description: Text(error))
+                    ContentUnavailableView("Load Failed", systemImage: "exclamationmark.triangle", description: Text(error))
                 } else {
                     if isEditing {
                         TextEditor(text: $content)
@@ -36,16 +36,16 @@ struct SkillDetailView: View {
             .navigationTitle(skill.name)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
+                    Button("Close") { dismiss() }
                 }
                 
                 ToolbarItem(placement: .primaryAction) {
                     if skill.isInstalled || !skill.isRemote {
-                        // 本地文件可编辑
+                        // Local file is editable
                         if isEditing {
-                            Button("保存") { saveContent() }
+                            Button("Save") { saveContent() }
                         } else {
-                            Button("编辑") { isEditing = true }
+                            Button("Edit") { isEditing = true }
                         }
                     }
                 }
@@ -59,19 +59,19 @@ struct SkillDetailView: View {
         isLoading = true
         defer { isLoading = false }
         
-        // 优先本地路径
+        // Prefer local path
         if let localPath = skill.localPath, FileManager.default.fileExists(atPath: localPath.path) {
             do {
                 content = try String(contentsOf: localPath, encoding: .utf8)
             } catch {
-                errorMessage = "读取本地文件失败: \(error.localizedDescription)"
+                errorMessage = "Failed to read local file: \(error.localizedDescription)"
             }
             return
         }
         
-        // 远程加载
+        // Remote load
         guard let remoteUrl = skill.remoteContentUrl else {
-            errorMessage = "无可用内容地址"
+            errorMessage = "No content URL available"
             return
         }
         
@@ -79,9 +79,9 @@ struct SkillDetailView: View {
             var request = URLRequest(url: remoteUrl)
             request.addValue("VanApp/1.0", forHTTPHeaderField: "User-Agent")
             let (data, _) = try await URLSession.shared.data(for: request)
-            content = String(data: data, encoding: .utf8) ?? "无法解码内容"
+            content = String(data: data, encoding: .utf8) ?? "Unable to decode content"
         } catch {
-            errorMessage = "网络错误: \(error.localizedDescription)"
+            errorMessage = "Network error: \(error.localizedDescription)"
         }
     }
     
@@ -91,7 +91,7 @@ struct SkillDetailView: View {
             try content.write(to: localPath, atomically: true, encoding: .utf8)
             isEditing = false
         } catch {
-            errorMessage = "保存失败: \(error.localizedDescription)"
+            errorMessage = "Save failed: \(error.localizedDescription)"
         }
     }
 }

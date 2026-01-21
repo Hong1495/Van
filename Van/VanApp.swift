@@ -46,9 +46,9 @@ enum AppTheme: String, CaseIterable {
     
     var displayName: String {
         switch self {
-        case .system: return "跟随系统"
-        case .light: return "浅色"
-        case .dark: return "深色"
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
         }
     }
     
@@ -83,46 +83,65 @@ class AppSettings: ObservableObject {
     }
 }
 
-#if canImport(Translation)
-import Translation
-#endif
-
-// ... (AppTheme & AppSettings 保持不变)
-
 struct SettingsView: View {
+    private enum Tab: Hashable {
+        case appearance, github, about
+    }
+    
     var body: some View {
         TabView {
-            GeneralSettingsView()
+            AppearanceSettingsView()
                 .tabItem {
-                    Label("通用", systemImage: "gear")
+                    Label("Appearance", systemImage: "paintpalette")
                 }
+                .tag(Tab.appearance)
             
-            TranslationSettingsView()
+            GitHubSettingsView()
                 .tabItem {
-                    Label("智能翻译", systemImage: "globe")
+                    Label("GitHub", systemImage: "personalhotspot")
                 }
+                .tag(Tab.github)
+                
+            AboutSettingsView()
+                .tabItem {
+                    Label("About", systemImage: "info.circle")
+                }
+                .tag(Tab.about)
         }
-        .frame(width: 500, height: 350)
+        .frame(width: 480, height: 320)
     }
 }
 
-struct GeneralSettingsView: View {
+struct AppearanceSettingsView: View {
     @StateObject private var settings = AppSettings.shared
     
     var body: some View {
         Form {
             Section {
-                Picker("外观主题", selection: $settings.themeRaw) {
+                Picker("Appearance", selection: $settings.themeRaw) {
                     ForEach(AppTheme.allCases, id: \.rawValue) { theme in
                         Text(theme.displayName).tag(theme.rawValue)
                     }
                 }
-                .pickerStyle(.inline)
-                .padding(.vertical, 4)
+                .pickerStyle(.radioGroup)
+                .padding(.vertical, 8)
+            } footer: {
+                Text("Select how Van appears in your system.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            
-            Section("GitHub 配置") {
-                VStack(alignment: .leading, spacing: 8) {
+        }
+        .formStyle(.grouped)
+    }
+}
+
+struct GitHubSettingsView: View {
+    @StateObject private var settings = AppSettings.shared
+    
+    var body: some View {
+        Form {
+            Section("API Configuration") {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         SecureField("Personal Access Token", text: $settings.githubToken)
                             .textFieldStyle(.roundedBorder)
@@ -130,144 +149,47 @@ struct GeneralSettingsView: View {
                         Link(destination: URL(string: "https://github.com/settings/tokens/new?description=Van+Skills+Sync&scopes=public_repo")!) {
                             Image(systemName: "questionmark.circle")
                         }
-                        .help("点击打开 GitHub 创建 Token 页面")
+                        .help("Click to open GitHub Token creation page")
                     }
                     
-                    Text("如果遇到 Sync Error 403 限流错误，请输入 Token 以增加 API 额度。")
-                        .font(.caption2)
+                    Text("Enter a Token to increase API quota and avoid Sync Error 403 (Rate Limit).")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-            
-            Section {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(nsImage: NSApp.applicationIconImage)
-                            .resizable()
-                            .frame(width: 48, height: 48)
-                        VStack(alignment: .leading) {
-                            Text("Van")
-                                .font(.title3.bold())
-                            Text("版本 3.8.1")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    LabeledContent("开发者", value: "Van Team")
-                    
-                    Text("Copyright © 2026 Van Team. All rights reserved.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
             }
         }
         .formStyle(.grouped)
-        .padding()
     }
 }
 
-struct TranslationSettingsView: View {
-    // Translation States
-    @State private var translationStatus: String = "正在检查..."
-    @State private var isTranslationSupported = false
-    @State private var translationConfig: TranslationSession.Configuration?
-    
+struct AboutSettingsView: View {
     var body: some View {
-        Form {
-            Section {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top, spacing: 16) {
-                        Image(systemName: "globe.desk")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.blue)
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("macOS 智能翻译")
-                                .font(.headline)
-                            Text("Van 利用 macOS 本地神经网络模型将 Skill 描述翻译为中文，安全且高效。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    
-                    Divider()
-                    
-                    LabeledContent("模型状态") {
-                        HStack {
-                            Circle()
-                                .fill(statusColor)
-                                .frame(width: 8, height: 8)
-                            Text(translationStatus)
-                        }
-                    }
-                    
-                    if isTranslationSupported {
-                        HStack {
-                            Spacer()
-                            Button(action: triggerModelDownload) {
-                                Text(translationStatus == "已安装" ? "管理模型..." : "下载离线模型...")
-                            }
-                        }
-                    } else {
-                        Text("当前系统不支持 (需 macOS 15+)")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-                .padding()
-            }
-        }
-        .formStyle(.grouped)
-        .padding()
-        .task { await checkTranslationStatus() }
-        #if canImport(Translation)
-        .translationTask(translationConfig) { session in
-            await checkTranslationStatus()
-        }
-        #endif
-    }
-    
-    private var statusColor: Color {
-        switch translationStatus {
-        case "已安装": return .green
-        case "未安装": return .orange
-        case "不支持": return .red
-        default: return .gray
-        }
-    }
-    
-    private func checkTranslationStatus() async {
-        if #available(macOS 15.0, *) {
-            #if canImport(Translation)
-            isTranslationSupported = true
-            let source = Locale.Language(identifier: "en")
-            let target = Locale.Language(identifier: "zh-Hans")
-            let availability = LanguageAvailability()
+        VStack(spacing: 20) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 64, height: 64)
             
-            let status = await availability.status(from: source, to: target)
-            switch status {
-            case .installed: translationStatus = "已安装"
-            case .supported: translationStatus = "未安装"
-            case .unsupported: translationStatus = "不支持"
-            @unknown default: translationStatus = "未知"
+            VStack(spacing: 4) {
+                Text("Van")
+                    .font(.title2.bold())
+                Text("Version 3.8.1")
+                    .foregroundStyle(.secondary)
             }
-            #else
-            translationStatus = "组件缺失"
-            #endif
-        } else {
-            translationStatus = "系统版本过低"
-            isTranslationSupported = false
+            
+            Divider()
+                .frame(width: 200)
+            
+            VStack(spacing: 8) {
+                Text("Copyright © 2026 Van Team.")
+                Text("All rights reserved.")
+            }
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            
+            Spacer()
         }
-    }
-    
-    private func triggerModelDownload() {
-        if #available(macOS 15.0, *) {
-            #if canImport(Translation)
-            translationConfig = .init(source: .init(identifier: "en"), target: .init(identifier: "zh-Hans"))
-            #endif
-        }
+        .padding(.top, 30)
     }
 }

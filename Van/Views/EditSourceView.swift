@@ -28,14 +28,14 @@ struct EditSourceView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("信息") {
-                    TextField("名称", text: $name)
+                Section("Information") {
+                    TextField("Name", text: $name)
                     if source.typeRaw == SkillSource.SourceType.subscription.rawValue {
-                        TextField("GitHub 地址", text: $url)
+                        TextField("GitHub URL", text: $url)
                     } else {
                         HStack {
-                            TextField("本地路径", text: $path)
-                            Button("选择...") {
+                            TextField("Local Path", text: $path)
+                            Button("Select...") {
                                 let panel = NSOpenPanel()
                                 panel.canChooseFiles = false
                                 panel.canChooseDirectories = true
@@ -45,11 +45,11 @@ struct EditSourceView: View {
                     }
                 }
             }
-            .navigationTitle("编辑源")
+            .navigationTitle("Edit Source")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button("Save") {
                         source.name = name
                         source.urlString = url
                         source.localPathString = path
