@@ -42,6 +42,7 @@ struct ContentView: View {
             }
             .listStyle(.sidebar)
             .navigationTitle("Van")
+            .navigationSplitViewColumnWidth(min: 150, ideal: 200, max: 250)
         } content: {
             if activeTab == .skills {
                 skillsSecondaryColumn
@@ -127,6 +128,8 @@ struct ContentView: View {
             }
         }
         .navigationTitle("Skills")
+        .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
+        .background(.ultraThinMaterial)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {

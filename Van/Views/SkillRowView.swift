@@ -41,12 +41,17 @@ struct SkillRowView: View {
             ZStack {
                 // Secondary click layer (background)
                 Button {
-                    activeSheet = .editor
+                    // Single click for focus, handled by list selection
                 } label: {
                     Color.clear
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        activeSheet = .editor
+                    }
+                )
                 
                 HStack(alignment: .top, spacing: 12) {
                     // Left area: Icon + Information
@@ -137,9 +142,9 @@ struct SkillRowView: View {
                             ForEach(contents) { item in
                                 HStack(spacing: 4) {
                                     Image(systemName: item.isDir ? "folder" : "doc")
-                                        .font(.system(size: 10))
+                                        .font(.system(size: 9))
                                     Text(item.name)
-                                        .font(.system(size: 10))
+                                        .font(.caption2.monospaced())
                                 }
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -162,6 +167,29 @@ struct SkillRowView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
         )
+        .contextMenu {
+            Button {
+                activeSheet = .editor
+            } label: {
+                Label("Open Editor", systemImage: "pencil")
+            }
+            
+            Button {
+                activeSheet = .detail
+            } label: {
+                Label("View Details", systemImage: "info.circle")
+            }
+            
+            Divider()
+            
+            if let uninstall = onUninstall {
+                Button(role: .destructive) {
+                    uninstall()
+                } label: {
+                    Label("Uninstall", systemImage: "trash")
+                }
+            }
+        }
         .sheet(item: $activeSheet) { item in
             switch item {
             case .editor:
