@@ -3,7 +3,7 @@ import { promises as fsProm } from 'fs';
 import path from 'path';
 import url from 'url';
 import {Menu as menu, shell, dialog, session, screen, 
-		clipboard, nativeImage, nativeTheme, ipcMain, app, BrowserWindow} from 'electron';
+		clipboard, nativeImage, nativeTheme, systemPreferences, ipcMain, app, BrowserWindow} from 'electron';
 import crc from 'crc';
 import zlib from 'zlib';
 import log from'electron-log';
@@ -1767,11 +1767,11 @@ app.whenReady().then(() =>
 		}
 
 		settingsWindow = new BrowserWindow({
-			title: 'Van Settings',
-			width: 780,
-			height: 600,
-			minWidth: 620,
-			minHeight: 480,
+			title: 'Settings',
+			width: 700,
+			height: 480,
+			minWidth: 640,
+			minHeight: 440,
 			show: false,
 			backgroundColor: nativeTheme.shouldUseDarkColors ? '#242426' : '#ffffff',
 			titleBarStyle: isMac ? 'hiddenInset' : 'default',
@@ -4105,6 +4105,12 @@ ipcMain.on("rendererReq", async (event, args) =>
 			break;
 		case 'getDocumentsFolder':
 			ret = await getDocumentsFolder();
+			break;
+		case 'getVanMenuColors':
+			ret = process.platform === 'darwin' ? {
+				background: systemPreferences.getColor('selected-content-background'),
+				text: systemPreferences.getColor('selected-menu-item-text')
+			} : null;
 			break;
 		case 'checkFileExists':
 			ret = await checkFileExists(args.pathParts);
