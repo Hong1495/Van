@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Van Settings</title>
+	<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+	<div class="settings-shell">
+		<nav class="settings-sidebar" aria-label="Settings sections">
+			<div class="sidebar-title">Van</div>
+			<button class="nav-item is-selected" type="button" data-section="general">General</button>
+			<button class="nav-item" type="button" data-section="appearance">Appearance</button>
+			<button class="nav-item" type="button" data-section="editor">Editor</button>
+			<button class="nav-item" type="button" data-section="libraries">Libraries</button>
+			<button class="nav-item" type="button" data-section="advanced">Advanced</button>
+		</nav>
+
+		<main class="settings-content">
+			<section class="settings-section is-active" data-panel="general">
+				<h1>General</h1>
+				<div class="settings-group">
+					<label class="setting-row">
+						<span>Save changes automatically</span>
+						<input id="autosave" type="checkbox">
+					</label>
+					<label class="setting-row">
+						<span>Check for updates automatically</span>
+						<input id="automaticUpdates" type="checkbox">
+					</label>
+					<label class="setting-row">
+						<span>Check for updates</span>
+						<select id="updateIntervalHours">
+							<option value="24">Every day</option>
+							<option value="48">Every 2 days</option>
+							<option value="72">Every 3 days</option>
+							<option value="168">Every week</option>
+						</select>
+					</label>
+				</div>
+			</section>
+
+			<section class="settings-section" data-panel="appearance">
+				<h1>Appearance</h1>
+				<div class="settings-group appearance-group">
+					<div class="setting-row vertical-row">
+						<span>Theme</span>
+						<div class="segmented-control" role="radiogroup" aria-label="Theme">
+							<label><input type="radio" name="appearance" value="auto"><span>System</span></label>
+							<label><input type="radio" name="appearance" value="light"><span>Light</span></label>
+							<label><input type="radio" name="appearance" value="dark"><span>Dark</span></label>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="settings-section" data-panel="editor">
+				<h1>Editor</h1>
+				<div class="settings-group">
+					<label class="setting-row">
+						<span>Check spelling while typing</span>
+						<input id="spellCheck" type="checkbox">
+					</label>
+					<label class="setting-row">
+						<span>Keep local backup files</span>
+						<input id="automaticBackup" type="checkbox">
+					</label>
+					<label class="setting-row">
+						<span>Draft interval</span>
+						<span class="number-field"><input id="draftSaveDelay" type="number" min="0" max="3600" step="1"><span>seconds</span></span>
+					</label>
+				</div>
+			</section>
+
+			<section class="settings-section" data-panel="libraries">
+				<h1>Libraries</h1>
+				<div class="settings-group">
+					<label class="setting-row">
+						<span>Google Fonts</span>
+						<input id="googleFonts" type="checkbox">
+					</label>
+				</div>
+			</section>
+
+			<section class="settings-section" data-panel="advanced">
+				<h1>Advanced</h1>
+				<div class="settings-group">
+					<div class="setting-row">
+						<span>Advanced configuration</span>
+						<button id="openAdvanced" class="command-button" type="button">Open...</button>
+					</div>
+				</div>
+			</section>
+
+			<div id="saveStatus" class="save-status" role="status" aria-live="polite"></div>
+		</main>
+	</div>
+	<script src="settings.js"></script>
+</body>
+</html>

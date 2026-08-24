@@ -1,5 +1,6 @@
 {
   "appId": "com.hong1495.van",
+  "productName": "Van",
   "copyright": "Copyright 2017-2026 draw.io Ltd",
   "asar": true,
   "files": [
@@ -14,6 +15,7 @@
       "provider": "github"
   },
   "win": {
+	"icon": "./build/icon.ico",
     "signtoolOptions": {
       "publisherName": ["JGraph Ltd", "draw.io Ltd"],
       "sign": "build/sign-trusted.mjs",
@@ -41,8 +43,8 @@
   "fileAssociations": [
 	  {
 	  	"ext": "drawio",
-	  	"name": "draw.io Diagram",
-	  	"description": "draw.io Diagram",
+          "name": "Van Diagram",
+          "description": "Van Diagram",
 	  	"mimeType": "application/vnd.jgraph.mxfile",
 	  	"role": "Editor"
 	  },
@@ -55,7 +57,7 @@
 	  },
 	  {
 	  	"ext": ["mmd", "mermaid"],
-	  	"name": "Mermaid Diagram",
+          "name": "Van Mermaid Diagram",
 	  	"description": "Mermaid Diagram",
 	  	"mimeType": "text/vnd.mermaid",
 	  	"role": "Editor"

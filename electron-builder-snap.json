@@ -1,5 +1,6 @@
 {
   "appId": "com.hong1495.van",
+  "productName": "Van",
   "copyright": "Copyright 2017-2026 draw.io Ltd",
   "asar": true,
   "files": [
@@ -14,11 +15,11 @@
   "linux": {
   	"executableName": "van",
     "category": "Graphics",
-    "maintainer": "draw.io <snap@draw.io>",
+    "maintainer": "Hong1495 <van@hong1495.dev>",
     "icon": "./build",
     "desktop": {
       "entry": {
-        "StartupWMClass": "draw-io"
+        "StartupWMClass": "van"
       }
     },
     "target": [
@@ -40,8 +41,8 @@
   "fileAssociations": [
 	  {
 	  	"ext": "drawio",
-	  	"name": "draw.io Diagram",
-	  	"description": "draw.io Diagram",
+          "name": "Van Diagram",
+          "description": "Van Diagram",
 	  	"mimeType": "application/vnd.jgraph.mxfile",
 	  	"role": "Editor"
 	  },
@@ -54,7 +55,7 @@
 	  },
 	  {
 	  	"ext": ["mmd", "mermaid"],
-	  	"name": "Mermaid Diagram",
+          "name": "Van Mermaid Diagram",
 	  	"description": "Mermaid Diagram",
 	  	"mimeType": "text/vnd.mermaid",
 	  	"role": "Editor"

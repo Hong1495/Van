@@ -8,8 +8,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const APPEX_BUNDLE_ID = 'com.jgraph.drawio.desktop.PreviewExtension';
-const DRAWIO_UTI = 'com.jgraph.drawio';
+const APPEX_BUNDLE_ID = 'com.hong1495.van.PreviewExtension';
+const DRAWIO_UTI = 'com.hong1495.van.diagram';
 
 /**
  * Finds the codesign identity used to sign the app bundle.
@@ -113,7 +113,7 @@ function setupQuickLookExtension(appPath, appVersion)
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>draw.io Quick Look</string>
+	<string>Van Quick Look</string>
 	<key>CFBundleExecutable</key>
 	<string>PreviewExtension</string>
 	<key>CFBundleIdentifier</key>
@@ -261,7 +261,7 @@ export default async function notarizing(context) {
 
   return await notarize({
     tool: "notarytool",
-    appBundleId: 'com.jgraph.drawio.desktop',
+    appBundleId: 'com.hong1495.van',
     appPath: appPath,
     appleId: process.env.APPLEID,
     appleIdPassword: process.env.APPLEIDPASS,

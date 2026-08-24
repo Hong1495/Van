@@ -1,5 +1,6 @@
 {
   "appId": "com.hong1495.van",
+  "productName": "Van",
   "copyright": "Copyright 2017-2026 draw.io Ltd",
   "asar": true,
   "files": [
@@ -15,6 +16,7 @@
       "provider": "github"
   },
   "mac": {
+	"icon": "./build/icon.icns",
   	"hardenedRuntime": true,
   	"gatekeeperAssess": false,
   	"entitlements": "build/entitlements.mac.plist",
@@ -23,8 +25,8 @@
     "extendInfo": {
       "UTExportedTypeDeclarations": [
         {
-          "UTTypeIdentifier": "com.jgraph.drawio",
-          "UTTypeDescription": "draw.io Diagram",
+          "UTTypeIdentifier": "com.hong1495.van.diagram",
+          "UTTypeDescription": "Van Diagram",
           "UTTypeConformsTo": ["public.xml", "public.data"],
           "UTTypeTagSpecification": {
             "public.filename-extension": ["drawio"],
@@ -35,10 +37,10 @@
       "CFBundleDocumentTypes": [
         {
           "CFBundleTypeExtensions": ["drawio"],
-          "CFBundleTypeName": "draw.io Diagram",
+          "CFBundleTypeName": "Van Diagram",
           "CFBundleTypeRole": "Editor",
           "CFBundleTypeIconFile": "icon.icns",
-          "LSItemContentTypes": ["com.jgraph.drawio"],
+          "LSItemContentTypes": ["com.hong1495.van.diagram"],
           "LSHandlerRank": "Owner"
         },
         {
@@ -79,11 +81,11 @@
   "linux": {
   	"executableName": "van",
     "category": "Graphics",
-    "maintainer": "draw.io <desktop@draw.io>",
+    "maintainer": "Hong1495 <van@hong1495.dev>",
     "icon": "./build",
     "desktop": {
       "entry": {
-        "StartupWMClass": "draw-io"
+        "StartupWMClass": "van"
       }
     },
     "target": [
@@ -113,8 +115,8 @@
   "fileAssociations": [
 	  {
 	  	"ext": "drawio",
-	  	"name": "draw.io Diagram",
-	  	"description": "draw.io Diagram",
+          "name": "Van Diagram",
+          "description": "Van Diagram",
 	  	"mimeType": "application/vnd.jgraph.mxfile",
 	  	"role": "Editor"
 	  },
@@ -127,7 +129,7 @@
 	  },
 	  {
 	  	"ext": ["mmd", "mermaid"],
-	  	"name": "Mermaid Diagram",
+          "name": "Van Mermaid Diagram",
 	  	"description": "Mermaid Diagram",
 	  	"mimeType": "text/vnd.mermaid",
 	  	"role": "Editor"

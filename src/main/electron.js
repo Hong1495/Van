@@ -3,7 +3,7 @@ import { promises as fsProm } from 'fs';
 import path from 'path';
 import url from 'url';
 import {Menu as menu, shell, dialog, session, screen, 
-		clipboard, nativeImage, ipcMain, app, BrowserWindow} from 'electron';
+		clipboard, nativeImage, nativeTheme, ipcMain, app, BrowserWindow} from 'electron';
 import crc from 'crc';
 import zlib from 'zlib';
 import log from'electron-log';
@@ -17,6 +17,14 @@ import ProgressBar from './progress-bar.js';
 import contextMenu from 'electron-context-menu';
 import {spawn, exec} from 'child_process';
 import {disableUpdate as disUpPkg} from './disableUpdate.js';
+import {buildVanMenuTemplate, applyVanMenuState} from './van-menu.js';
+import {sanitizeVanSetting} from './van-settings.js';
+
+app.setName('Van');
+if (typeof app.setAppUserModelId === 'function')
+{
+	app.setAppUserModelId('com.hong1495.van');
+}
 
 let store;
 
@@ -154,7 +162,10 @@ function safeUpdaterListener(label, fn)
 }
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-const appIconPath = path.join(__dirname, '../../Van.icon/Assets/Van.png');
+const appIconPath = path.join(__dirname, '../../build/icon.png');
+const settingsDir = path.join(__dirname, '../settings');
+const settingsPagePath = path.join(settingsDir, 'index.html');
+const settingsUrl = url.pathToFileURL(settingsDir).href;
 
 //Command option to disable hardware acceleration
 if (process.argv.indexOf('--disable-acceleration') !== -1)
@@ -190,12 +201,19 @@ let windowsRegistry = []
 let cmdQPressed = false
 let firstWinLoaded = false
 let firstWinFilePath = null
+let settingsWindow = null
+let vanApplicationMenu = null
+let lastActiveEditorWindow = null
+const vanMenuStateByWebContents = new Map()
 const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
 let enableSpellCheck = store != null ? store.get('enableSpellCheck') : false;
 enableSpellCheck = enableSpellCheck != null ? enableSpellCheck : isMac;
 let enableStoreBkp = store != null ? (store.get('enableStoreBkp') != null ? store.get('enableStoreBkp') : true) : false;
 let dialogOpen = false;
+let vanAppearance = store != null ? store.get('vanAppearance', 'auto') : 'auto';
+vanAppearance = sanitizeVanSetting('appearance', vanAppearance) || 'auto';
+nativeTheme.themeSource = vanAppearance === 'auto' ? 'system' : vanAppearance;
 // One-shot value used to seed the drawio Configuration's defaultAdaptiveColors
 // for users running this version for the first time. 'auto' for new installs,
 // 'simple' for updates from a previous desktop version. Null after migration.
@@ -369,6 +387,10 @@ catch(e)
 	console.log('Error in urlParams.json file: ' + e.message);
 }
 
+// Van has one stable editor layout. Document-level sketch styling remains
+// independent, while app appearance is controlled by the setting below.
+queryObj['ui'] = 'kennedy';
+
 // Trying sandboxing the renderer for more protection
 //app.enableSandbox(); // This maybe the reason snap stopped working
 
@@ -395,10 +417,15 @@ function createWindow (opt = {})
 
 	let options = Object.assign(
 	{
+		title: 'Van',
 		backgroundColor: '#FFF',
 		width: lastWinSize.width,
 		height: lastWinSize.height,
 		icon: appIconPath,
+		...(isMac ? {
+			titleBarStyle: 'hiddenInset',
+			trafficLightPosition: {x: 16, y: 16}
+		} : {}),
 		webviewTag: false,
 		webSecurity: true,
 		webPreferences: {
@@ -424,7 +451,17 @@ function createWindow (opt = {})
 	options.height = bounds.height;
 
 	let mainWindow = new BrowserWindow(options)
+	const mainWebContentsId = mainWindow.webContents.id
 	windowsRegistry.push(mainWindow)
+	lastActiveEditorWindow = mainWindow
+
+	mainWindow.on('focus', () =>
+	{
+		lastActiveEditorWindow = mainWindow;
+		applyVanMenuState(vanApplicationMenu,
+			vanMenuStateByWebContents.get(mainWebContentsId));
+		mainWindow.webContents.send('van-menu-state-request');
+	});
 
 	if (lastWinSize.maximized)
 	{
@@ -620,6 +657,12 @@ function createWindow (opt = {})
 	mainWindow.on('closed', () =>
 	{
 		const index = windowsRegistry.indexOf(mainWindow)
+		vanMenuStateByWebContents.delete(mainWebContentsId)
+
+		if (lastActiveEditorWindow === mainWindow)
+		{
+			lastActiveEditorWindow = windowsRegistry.find((candidate) => candidate !== mainWindow) || null;
+		}
 		
 		if (__DEV__) 
 		{
@@ -669,7 +712,7 @@ app.whenReady().then(() =>
 	{
 		const url = details.url.replace(/\/.\:\//, str => str.toUpperCase());
 
-		if (!url.startsWith(codeUrl))
+		if (!url.startsWith(codeUrl) && !url.startsWith(settingsUrl))
 		{
 			console.log('Blocked loading file from ' + details.url, url, codeUrl);
 			callback({cancel: true});
@@ -1523,15 +1566,13 @@ app.whenReady().then(() =>
 	}
 
 	let autoCheckForUpdates = {
+		id: 'van.autoUpdates',
 		label: 'Check for Updates Automatically',
 		type: 'checkbox',
 		checked: store == null || store.get('dontCheckUpdates') !== true,
 		click: (menuItem) =>
 		{
-			if (store != null)
-			{
-				store.set('dontCheckUpdates', !menuItem.checked);
-			}
+			setVanSetting('automaticUpdates', menuItem.checked);
 		}
 	}
 
@@ -1546,7 +1587,7 @@ app.whenReady().then(() =>
 		{
 			type: 'question',
 			title: 'Update Check Interval',
-			message: 'How often should draw.io check for updates?',
+			message: 'How often should Van check for updates?',
 			detail: `Current interval: ${currentHours === 168 ? '1 week' : currentHours + ' hours'}`,
 			buttons: buttons,
 			defaultId: hours.indexOf(currentHours) >= 0 ? hours.indexOf(currentHours) : hours.indexOf(DEFAULT_UPDATE_CHECK_HOURS),
@@ -1555,7 +1596,7 @@ app.whenReady().then(() =>
 		{
 			if (result.response < hours.length && store != null)
 			{
-				store.set('updateCheckIntervalHours', hours[result.response]);
+				setVanSetting('updateIntervalHours', hours[result.response]);
 			}
 		});
 	}
@@ -1565,79 +1606,261 @@ app.whenReady().then(() =>
 		click: setUpdateIntervalFn
 	}
 
-	let zoomIn = {
-		label: 'Zoom In',
-		click: zoomInFn
-	};
-
-	let zoomOut = {
-		label: 'Zoom Out',
-		click: zoomOutFn
-	};
-
-	let resetZoom = {
-		label: 'Actual Size',
-		click: resetZoomFn
-	};
-
 	ipcMain.on('checkForUpdates', checkForUpdatesFn);
 	ipcMain.on('zoomIn', zoomInFn);
 	ipcMain.on('zoomOut', zoomOutFn);
 	ipcMain.on('resetZoom', resetZoomFn);
 
+	function getEditorTarget()
+	{
+		const focused = BrowserWindow.getFocusedWindow();
+
+		if (focused != null && windowsRegistry.includes(focused))
+		{
+			return focused;
+		}
+
+		if (lastActiveEditorWindow != null && !lastActiveEditorWindow.isDestroyed())
+		{
+			return lastActiveEditorWindow;
+		}
+
+		return windowsRegistry.find((candidate) => !candidate.isDestroyed()) || null;
+	}
+
+	function dispatchVanAction(action)
+	{
+		const focused = BrowserWindow.getFocusedWindow();
+		const textEditingCommands = {
+			undo: 'undo', redo: 'redo', cut: 'cut', copy: 'copy', paste: 'paste',
+			selectAll: 'selectAll', delete: 'delete'
+		};
+
+		if (focused === settingsWindow && textEditingCommands[action] != null)
+		{
+			const command = textEditingCommands[action];
+
+			if (typeof focused.webContents[command] === 'function')
+			{
+				focused.webContents[command]();
+			}
+
+			return;
+		}
+
+		const target = getEditorTarget();
+
+		if (target != null)
+		{
+			target.webContents.send('van-command', {action});
+		}
+	}
+
+	function getVanSettings()
+	{
+		return {
+			appearance: vanAppearance,
+			autosave: store?.get('vanAutosave') ?? false,
+			automaticUpdates: store == null || store.get('dontCheckUpdates') !== true,
+			updateIntervalHours: store?.get('updateCheckIntervalHours') ?? 24,
+			spellCheck: enableSpellCheck,
+			automaticBackup: enableStoreBkp,
+			draftSaveDelay: store?.get('vanDraftSaveDelay') ?? 5,
+			googleFonts: isGoogleFontsEnabled
+		};
+	}
+
+	function notifySettingsChanged()
+	{
+		if (settingsWindow != null && !settingsWindow.isDestroyed())
+		{
+			settingsWindow.webContents.send('van-settings:changed', getVanSettings());
+		}
+	}
+
+	function sendSettingToEditors(key, value)
+	{
+		for (const editorWindow of windowsRegistry)
+		{
+			if (!editorWindow.isDestroyed())
+			{
+				editorWindow.webContents.send('van-settings-apply', {key, value});
+			}
+		}
+	}
+
+	function setVanSetting(key, value)
+	{
+		const cleanValue = sanitizeVanSetting(key, value);
+
+		if (cleanValue == null)
+		{
+			return false;
+		}
+
+		switch (key)
+		{
+			case 'appearance':
+				vanAppearance = cleanValue;
+				store?.set('vanAppearance', cleanValue);
+				nativeTheme.themeSource = cleanValue === 'auto' ? 'system' : cleanValue;
+				sendSettingToEditors(key, cleanValue);
+			break;
+			case 'autosave':
+				store?.set('vanAutosave', cleanValue);
+				sendSettingToEditors(key, cleanValue);
+			break;
+			case 'spellCheck':
+				enableSpellCheck = cleanValue;
+				store?.set('enableSpellCheck', cleanValue);
+				queryObj['enableSpellCheck'] = cleanValue ? 1 : 0;
+
+				if (typeof session.defaultSession.setSpellCheckerEnabled === 'function')
+				{
+					session.defaultSession.setSpellCheckerEnabled(cleanValue);
+				}
+			break;
+			case 'automaticBackup':
+				enableStoreBkp = cleanValue;
+				store?.set('enableStoreBkp', cleanValue);
+				queryObj['enableStoreBkp'] = cleanValue ? 1 : 0;
+			break;
+			case 'googleFonts':
+				isGoogleFontsEnabled = cleanValue;
+				store?.set('isGoogleFontsEnabled', cleanValue);
+				queryObj['isGoogleFontsEnabled'] = cleanValue ? 1 : 0;
+			break;
+			case 'automaticUpdates':
+				store?.set('dontCheckUpdates', !cleanValue);
+
+				if (vanApplicationMenu != null)
+				{
+					const item = vanApplicationMenu.getMenuItemById('van.autoUpdates');
+					if (item != null) item.checked = cleanValue;
+				}
+			break;
+			case 'updateIntervalHours':
+				store?.set('updateCheckIntervalHours', cleanValue);
+			break;
+			case 'draftSaveDelay':
+				store?.set('vanDraftSaveDelay', cleanValue);
+				sendSettingToEditors(key, cleanValue);
+			break;
+		}
+
+		notifySettingsChanged();
+		return true;
+	}
+
+	function isSettingsSender(event)
+	{
+		return event.senderFrame != null && event.senderFrame.url.startsWith(settingsUrl);
+	}
+
+	function showSettingsWindow()
+	{
+		if (settingsWindow != null && !settingsWindow.isDestroyed())
+		{
+			settingsWindow.show();
+			settingsWindow.focus();
+			return;
+		}
+
+		settingsWindow = new BrowserWindow({
+			title: 'Van Settings',
+			width: 780,
+			height: 600,
+			minWidth: 620,
+			minHeight: 480,
+			show: false,
+			backgroundColor: nativeTheme.shouldUseDarkColors ? '#242426' : '#ffffff',
+			titleBarStyle: isMac ? 'hiddenInset' : 'default',
+			trafficLightPosition: isMac ? {x: 16, y: 16} : undefined,
+			fullscreenable: false,
+			webPreferences: {
+				preload: path.join(__dirname, 'settings-preload.js'),
+				contextIsolation: true,
+				nodeIntegration: false,
+				sandbox: true
+			}
+		});
+
+		settingsWindow.setMenu(null);
+		settingsWindow.loadFile(settingsPagePath);
+		settingsWindow.once('ready-to-show', () => settingsWindow?.show());
+		settingsWindow.on('closed', () => { settingsWindow = null; });
+	}
+
+	ipcMain.on('van-menu-state', (event, payload) =>
+	{
+		if (!validateSender(event.senderFrame) || payload == null) return;
+
+		if (payload.actions != null && typeof payload.actions === 'object')
+		{
+			vanMenuStateByWebContents.set(event.sender.id, payload.actions);
+
+			if (BrowserWindow.getFocusedWindow()?.webContents === event.sender)
+			{
+				applyVanMenuState(vanApplicationMenu, payload.actions);
+			}
+		}
+
+		if (payload.settings != null)
+		{
+			const reportedAppearance = sanitizeVanSetting('appearance', payload.settings.appearance);
+			const reportedDraftDelay = sanitizeVanSetting('draftSaveDelay', payload.settings.draftSaveDelay);
+			const reportedAutosave = sanitizeVanSetting('autosave', payload.settings.autosave);
+
+			if (reportedAppearance != null)
+			{
+				vanAppearance = reportedAppearance;
+				store?.set('vanAppearance', reportedAppearance);
+				nativeTheme.themeSource = reportedAppearance === 'auto' ? 'system' : reportedAppearance;
+			}
+
+			if (reportedDraftDelay != null) store?.set('vanDraftSaveDelay', reportedDraftDelay);
+			if (reportedAutosave != null) store?.set('vanAutosave', reportedAutosave);
+			notifySettingsChanged();
+		}
+	});
+
+	ipcMain.handle('van-settings:get', (event) =>
+	{
+		if (!isSettingsSender(event)) return null;
+		return getVanSettings();
+	});
+
+	ipcMain.handle('van-settings:set', (event, payload) =>
+	{
+		if (!isSettingsSender(event) || payload == null) return null;
+		setVanSetting(payload.key, payload.value);
+		return getVanSettings();
+	});
+
+	ipcMain.on('van-settings:open-advanced', (event) =>
+	{
+		if (!isSettingsSender(event)) return;
+		dispatchVanAction('configuration');
+		settingsWindow?.hide();
+		setTimeout(() => settingsWindow?.close(), 100);
+	});
+
 	if (isMac)
 	{
-	    let template = [{
-	      label: app.name,
-	      submenu: [
-	        {
-	          label: 'About ' + app.name,
-	          click() { shell.openExternal('https://github.com/Hong1495/Van'); }
-	        },
-	        {
-	          label: 'Support',
-	          click() { shell.openExternal('https://github.com/Hong1495/Van/issues'); }
-			},
+		const template = buildVanMenuTemplate({
+			appName: 'Van',
+			dispatch: dispatchVanAction,
+			showSettings: showSettingsWindow,
+			openAbout: () => shell.openExternal('https://github.com/Hong1495/Van'),
+			openSupport: () => shell.openExternal('https://github.com/Hong1495/Van/issues'),
 			checkForUpdates,
 			autoCheckForUpdates,
 			setUpdateInterval,
-	        { type: 'separator' },
-			resetZoom,
-			zoomIn,
-			zoomOut,
-			{ type: 'separator' },
-	        { role: 'hide' },
-	        { role: 'hideothers' },
-	        { role: 'unhide' },
-			{ type: 'separator' },
-	        { role: 'quit' }
-	      ]
-	    }, {
-	      label: 'File',
-	      submenu: [
-	        { role: 'close' }
-	      ]
-	    }, {
-	      label: 'Edit',
-	      submenu: [
-			{ role: 'undo' },
-			{ role: 'redo' },
-			{ type: 'separator' },
-			{ role: 'cut' },
-			{ role: 'copy' },
-			{ role: 'paste' },
-			{ role: 'pasteAndMatchStyle' },
-			{ role: 'selectAll' }
-	      ]
-	    }]
-	    
-	    if (disableUpdate)
-		{
-			template[0].submenu.splice(2, 3);
-		}
-		
-		const menuBar = menu.buildFromTemplate(template)
-		menu.setApplicationMenu(menuBar)
+			disableUpdate
+		});
+
+		vanApplicationMenu = menu.buildFromTemplate(template);
+		menu.setApplicationMenu(vanApplicationMenu);
 	}
 	else //hide  menubar in win/linux
 	{
