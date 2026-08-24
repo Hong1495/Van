@@ -18,7 +18,9 @@ import contextMenu from 'electron-context-menu';
 import {spawn, exec} from 'child_process';
 import {disableUpdate as disUpPkg} from './disableUpdate.js';
 import {buildVanMenuTemplate, applyVanMenuState} from './van-menu.js';
+import {buildVanContextMenuTemplate} from './van-context-menu.js';
 import {sanitizeVanSetting} from './van-settings.js';
+import {getVanWindowMaterialOptions} from './van-materials.js';
 
 app.setName('Van');
 if (typeof app.setAppUserModelId === 'function')
@@ -214,6 +216,82 @@ let dialogOpen = false;
 let vanAppearance = store != null ? store.get('vanAppearance', 'auto') : 'auto';
 vanAppearance = sanitizeVanSetting('appearance', vanAppearance) || 'auto';
 nativeTheme.themeSource = vanAppearance === 'auto' ? 'system' : vanAppearance;
+
+function getVanSystemAppearance()
+{
+	const appearance = {
+		nativeVibrancy: isMac && !nativeTheme.prefersReducedTransparency,
+		nativeContextMenus: isMac,
+		reducedTransparency: nativeTheme.prefersReducedTransparency,
+		highContrast: nativeTheme.shouldUseHighContrastColors,
+		differentiateWithoutColor: nativeTheme.shouldDifferentiateWithoutColor,
+		colors: null
+	};
+
+	if (isMac)
+	{
+		try
+		{
+			appearance.colors = {
+				selectionBackground: systemPreferences.getColor('selected-content-background'),
+				selectionText: systemPreferences.getColor('selected-menu-item-text'),
+				unemphasizedSelectionBackground: systemPreferences.getColor('unemphasized-selected-content-background'),
+				separator: systemPreferences.getColor('separator')
+			};
+		}
+		catch (e)
+		{
+			// CSS system colors remain available if AppKit cannot supply a color.
+		}
+	}
+
+	return appearance;
+}
+
+function applyVanWindowMaterial(targetWindow, kind)
+{
+	if (targetWindow == null || targetWindow.isDestroyed()) return;
+
+	const appearance = getVanSystemAppearance();
+	const options = getVanWindowMaterialOptions({
+		isMac,
+		kind,
+		dark: nativeTheme.shouldUseDarkColors,
+		reducedTransparency: appearance.reducedTransparency
+	});
+
+	if (isMac)
+	{
+		targetWindow.setVibrancy(options.vibrancy || null);
+
+		if (typeof targetWindow.setWindowButtonVisibility === 'function')
+		{
+			targetWindow.setWindowButtonVisibility(true);
+		}
+	}
+
+	targetWindow.setBackgroundColor(options.backgroundColor);
+}
+
+function broadcastVanSystemAppearance()
+{
+	const appearance = getVanSystemAppearance();
+
+	for (const editorWindow of windowsRegistry)
+	{
+		if (editorWindow != null && !editorWindow.isDestroyed())
+		{
+			applyVanWindowMaterial(editorWindow, 'editor');
+			editorWindow.webContents.send('van-system-appearance', appearance);
+		}
+	}
+
+	if (settingsWindow != null && !settingsWindow.isDestroyed())
+	{
+		applyVanWindowMaterial(settingsWindow, 'settings');
+		settingsWindow.webContents.send('van-system-appearance', appearance);
+	}
+}
 // One-shot value used to seed the drawio Configuration's defaultAdaptiveColors
 // for users running this version for the first time. 'auto' for new installs,
 // 'simple' for updates from a previous desktop version. Null after migration.
@@ -407,6 +485,12 @@ function createWindow (opt = {})
 {
 	let lastWinSizeStr = (store && store.get('lastWinSize')) || '1200,800,0,0,false,false';
 	let lastWinSize = parseLastWinSize(lastWinSizeStr);
+	const materialOptions = getVanWindowMaterialOptions({
+		isMac,
+		kind: 'editor',
+		dark: nativeTheme.shouldUseDarkColors,
+		reducedTransparency: nativeTheme.prefersReducedTransparency
+	});
 
 	const additionalArguments = [];
 
@@ -418,7 +502,8 @@ function createWindow (opt = {})
 	let options = Object.assign(
 	{
 		title: 'Van',
-		backgroundColor: '#FFF',
+		...materialOptions,
+		show: false,
 		width: lastWinSize.width,
 		height: lastWinSize.height,
 		icon: appIconPath,
@@ -454,6 +539,52 @@ function createWindow (opt = {})
 	const mainWebContentsId = mainWindow.webContents.id
 	windowsRegistry.push(mainWindow)
 	lastActiveEditorWindow = mainWindow
+	let revealFallback = null;
+
+	const showWindowButtons = () =>
+	{
+		if (isMac && !mainWindow.isDestroyed() &&
+			typeof mainWindow.setWindowButtonVisibility === 'function')
+		{
+			mainWindow.setWindowButtonVisibility(true);
+		}
+	};
+
+	const revealEditorWindow = () =>
+	{
+		if (mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+
+		if (revealFallback != null)
+		{
+			clearTimeout(revealFallback);
+			revealFallback = null;
+		}
+
+		ipcMain.removeListener('app-load-finished', handleAppLoadFinished);
+		showWindowButtons();
+		mainWindow.show();
+		mainWindow.focus();
+	};
+
+	const handleAppLoadFinished = (event) =>
+	{
+		if (event.sender === mainWindow.webContents && validateSender(event.senderFrame))
+		{
+			revealEditorWindow();
+		}
+	};
+
+	ipcMain.on('app-load-finished', handleAppLoadFinished);
+	revealFallback = setTimeout(revealEditorWindow, 15000);
+	revealFallback.unref?.();
+
+	if (isMac && typeof mainWindow.setWindowButtonVisibility === 'function')
+	{
+		showWindowButtons();
+		mainWindow.on('show', showWindowButtons);
+		mainWindow.on('focus', showWindowButtons);
+		mainWindow.webContents.once('did-finish-load', showWindowButtons);
+	}
 
 	mainWindow.on('focus', () =>
 	{
@@ -657,6 +788,14 @@ function createWindow (opt = {})
 	mainWindow.on('closed', () =>
 	{
 		const index = windowsRegistry.indexOf(mainWindow)
+		ipcMain.removeListener('app-load-finished', handleAppLoadFinished)
+
+		if (revealFallback != null)
+		{
+			clearTimeout(revealFallback)
+			revealFallback = null
+		}
+
 		vanMenuStateByWebContents.delete(mainWebContentsId)
 
 		if (lastActiveEditorWindow === mainWindow)
@@ -1773,7 +1912,12 @@ app.whenReady().then(() =>
 			minWidth: 640,
 			minHeight: 440,
 			show: false,
-			backgroundColor: nativeTheme.shouldUseDarkColors ? '#242426' : '#ffffff',
+			...getVanWindowMaterialOptions({
+				isMac,
+				kind: 'settings',
+				dark: nativeTheme.shouldUseDarkColors,
+				reducedTransparency: nativeTheme.prefersReducedTransparency
+			}),
 			titleBarStyle: isMac ? 'hiddenInset' : 'default',
 			trafficLightPosition: isMac ? {x: 16, y: 16} : undefined,
 			fullscreenable: false,
@@ -1787,7 +1931,11 @@ app.whenReady().then(() =>
 
 		settingsWindow.setMenu(null);
 		settingsWindow.loadFile(settingsPagePath);
-		settingsWindow.once('ready-to-show', () => settingsWindow?.show());
+		settingsWindow.once('ready-to-show', () =>
+		{
+			broadcastVanSystemAppearance();
+			settingsWindow?.show();
+		});
 		settingsWindow.on('closed', () => { settingsWindow = null; });
 	}
 
@@ -1830,6 +1978,12 @@ app.whenReady().then(() =>
 		return getVanSettings();
 	});
 
+	ipcMain.handle('van-system-appearance:get', (event) =>
+	{
+		if (!isSettingsSender(event)) return null;
+		return getVanSystemAppearance();
+	});
+
 	ipcMain.handle('van-settings:set', (event, payload) =>
 	{
 		if (!isSettingsSender(event) || payload == null) return null;
@@ -1844,6 +1998,44 @@ app.whenReady().then(() =>
 		settingsWindow?.hide();
 		setTimeout(() => settingsWindow?.close(), 100);
 	});
+
+	ipcMain.on('van-context-menu:show', (event, payload) =>
+	{
+		if (!isMac || !validateSender(event.senderFrame) || payload == null) return;
+
+		const targetWindow = BrowserWindow.fromWebContents(event.sender);
+		const menuId = typeof payload.menuId === 'string' ? payload.menuId.slice(0, 80) : '';
+
+		if (targetWindow == null || menuId.length === 0) return;
+
+		const template = buildVanContextMenuTemplate(payload.items, (token) =>
+		{
+			if (!event.sender.isDestroyed())
+			{
+				event.sender.send('van-context-menu:select', {menuId, token});
+			}
+		});
+
+		if (template.length === 0) return;
+
+		const contextMenu = menu.buildFromTemplate(template);
+		const x = Number.isFinite(payload.x) ? Math.max(0, Math.round(payload.x)) : undefined;
+		const y = Number.isFinite(payload.y) ? Math.max(0, Math.round(payload.y)) : undefined;
+		contextMenu.popup({
+			window: targetWindow,
+			x,
+			y,
+			callback: () =>
+			{
+				if (!event.sender.isDestroyed())
+				{
+					event.sender.send('van-context-menu:closed', {menuId});
+				}
+			}
+		});
+	});
+
+	nativeTheme.on('updated', broadcastVanSystemAppearance);
 
 	if (isMac)
 	{
@@ -4107,10 +4299,16 @@ ipcMain.on("rendererReq", async (event, args) =>
 			ret = await getDocumentsFolder();
 			break;
 		case 'getVanMenuColors':
-			ret = process.platform === 'darwin' ? {
-				background: systemPreferences.getColor('selected-content-background'),
-				text: systemPreferences.getColor('selected-menu-item-text')
-			} : null;
+		{
+			const colors = getVanSystemAppearance().colors;
+			ret = colors == null ? null : {
+				background: colors.selectionBackground,
+				text: colors.selectionText
+			};
+			break;
+		}
+		case 'getVanSystemAppearance':
+			ret = getVanSystemAppearance();
 			break;
 		case 'checkFileExists':
 			ret = await checkFileExists(args.pathParts);

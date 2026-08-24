@@ -11,6 +11,42 @@ const fields = {
 let applyingState = false;
 let statusTimer = null;
 
+function applySystemAppearance(appearance)
+{
+	if (appearance == null) return;
+
+	const root = document.documentElement;
+	root.classList.toggle('native-vibrancy', appearance.nativeVibrancy === true);
+	root.classList.toggle('reduce-transparency', appearance.reducedTransparency === true);
+	root.classList.toggle('high-contrast', appearance.highContrast === true);
+	root.classList.toggle('differentiate-without-color',
+		appearance.differentiateWithoutColor === true);
+
+	if (appearance.colors != null)
+	{
+		const colors = appearance.colors;
+		const properties = {
+			selectionBackground: '--selected',
+			selectionText: '--selected-text',
+			unemphasizedSelectionBackground: '--selected-inactive',
+			separator: '--system-line'
+		};
+
+		for (const [key, property] of Object.entries(properties))
+		{
+			if (typeof colors[key] === 'string' && /^#[0-9a-f]{8}$/i.test(colors[key]))
+			{
+				root.style.setProperty(property, colors[key]);
+			}
+		}
+	}
+}
+
+function updateWindowActivity()
+{
+	document.documentElement.classList.toggle('window-inactive', !document.hasFocus());
+}
+
 function showSaved()
 {
 	const status = document.getElementById('saveStatus');
@@ -104,4 +140,9 @@ document.getElementById('openAdvanced').addEventListener('click', () =>
 });
 
 window.vanSettings.onChanged(applySettings);
+window.vanSettings.onSystemAppearance(applySystemAppearance);
 window.vanSettings.get().then(applySettings);
+window.vanSettings.getSystemAppearance().then(applySystemAppearance);
+window.addEventListener('focus', updateWindowActivity);
+window.addEventListener('blur', updateWindowActivity);
+updateWindowActivity();

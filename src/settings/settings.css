@@ -3,7 +3,8 @@
 	font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 	font-size: 13px;
 	--window: light-dark(#f4f4f6, #202022);
-	--sidebar: light-dark(rgba(234, 234, 237, .96), rgba(43, 43, 46, .96));
+	--sidebar-opaque: light-dark(#ececef, #2b2b2e);
+	--sidebar-material: light-dark(rgba(236, 236, 239, .84), rgba(43, 43, 46, .82));
 	--content: light-dark(#ffffff, #252527);
 	--text: light-dark(#202124, #f2f2f4);
 	--secondary: light-dark(#68686d, #aaaab0);
@@ -14,7 +15,9 @@
 	--pressed: light-dark(rgba(0, 0, 0, .10), rgba(255, 255, 255, .12));
 	--selected: light-dark(#0a64d8, #147ce5);
 	--selected-soft: light-dark(rgba(10, 100, 216, .14), rgba(64, 156, 255, .22));
+	--selected-inactive: light-dark(rgba(0, 0, 0, .08), rgba(255, 255, 255, .12));
 	--selected-text: #ffffff;
+	--system-line: var(--line);
 }
 
 * {
@@ -28,7 +31,7 @@ body {
 	height: 100%;
 	margin: 0;
 	overflow: hidden;
-	background: var(--window);
+	background: transparent;
 	color: var(--text);
 	user-select: none;
 }
@@ -48,11 +51,15 @@ select {
 
 .settings-sidebar {
 	padding: 46px 9px 14px;
-	background: var(--sidebar);
-	border-right: 1px solid var(--line);
+	background: var(--sidebar-material);
+	border-right: 1px solid var(--system-line);
 	backdrop-filter: blur(22px) saturate(135%);
 	-webkit-backdrop-filter: blur(22px) saturate(135%);
 	-webkit-app-region: drag;
+}
+
+.native-vibrancy:not(.reduce-transparency) .settings-sidebar {
+	background: transparent;
 }
 
 .sidebar-title {
@@ -86,6 +93,15 @@ select {
 	font-weight: 590;
 }
 
+.window-inactive .nav-item.is-selected {
+	background: var(--selected-inactive);
+	color: var(--text);
+}
+
+.differentiate-without-color .nav-item.is-selected {
+	box-shadow: inset 0 0 0 1px var(--selected);
+}
+
 .nav-item:active:not(.is-selected) {
 	background: var(--pressed);
 }
@@ -115,8 +131,8 @@ h1 {
 }
 
 .settings-group {
-	border-top: 1px solid var(--line);
-	border-bottom: 1px solid var(--line);
+	border-top: 1px solid var(--system-line);
+	border-bottom: 1px solid var(--system-line);
 	-webkit-app-region: no-drag;
 }
 
@@ -127,7 +143,7 @@ h1 {
 	gap: 20px;
 	min-height: 44px;
 	padding: 8px 2px;
-	border-bottom: 1px solid var(--line);
+	border-bottom: 1px solid var(--system-line);
 }
 
 .setting-row:last-child {
@@ -251,10 +267,54 @@ button:disabled {
 	outline-offset: 1px;
 }
 
+.reduce-transparency {
+	--sidebar-material: var(--sidebar-opaque);
+}
+
+.reduce-transparency .settings-sidebar {
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+}
+
+.high-contrast {
+	--line: light-dark(rgba(0, 0, 0, .42), rgba(255, 255, 255, .45));
+	--control-line: light-dark(rgba(0, 0, 0, .55), rgba(255, 255, 255, .58));
+	--system-line: var(--line);
+}
+
+.high-contrast select,
+.high-contrast input,
+.high-contrast button,
+.high-contrast .segmented-control {
+	border-width: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	* {
 		scroll-behavior: auto !important;
 		transition-duration: 0s !important;
+	}
+}
+
+@media (prefers-contrast: more) {
+	:root {
+		--line: light-dark(rgba(0, 0, 0, .42), rgba(255, 255, 255, .45));
+		--control-line: light-dark(rgba(0, 0, 0, .55), rgba(255, 255, 255, .58));
+		--system-line: var(--line);
+	}
+}
+
+@media (forced-colors: active) {
+	:root {
+		--window: Canvas;
+		--sidebar-material: Canvas;
+		--content: Canvas;
+		--text: CanvasText;
+		--secondary: GrayText;
+		--field: Field;
+		--control-line: ButtonText;
+		--system-line: ButtonText;
+		forced-color-adjust: auto;
 	}
 }
 
