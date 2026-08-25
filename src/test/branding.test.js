@@ -31,6 +31,10 @@ test('Van packaging keeps app branding and platform icons explicit', () =>
 	const macConfig = readBuilderConfig('electron-builder-linux-mac.json');
 	assert.equal(macConfig.mac.icon, './build/icon.icns');
 	assert.equal(macConfig.linux.icon, './build');
+	assert.ok(macConfig.mac.extendInfo.CFBundleDocumentTypes.every((entry) =>
+		entry.CFBundleTypeIconFile === 'document.icns'));
+	assert.ok(macConfig.fileAssociations.every((entry) =>
+		entry.icon === 'document.icns'));
 
 	for (const filename of ['electron-builder-win.json', 'electron-builder-win32.json',
 		'electron-builder-win-arm64.json', 'electron-builder-appx.json'])
@@ -42,4 +46,6 @@ test('Van packaging keeps app branding and platform icons explicit', () =>
 		'com.hong1495.van.diagram');
 	assert.equal(macConfig.mac.extendInfo.CFBundleDocumentTypes[0].CFBundleTypeName,
 		'Van Diagram');
+	assert.ok(macConfig.mac.extendInfo.CFBundleDocumentTypes[0].LSItemContentTypes.includes(
+		'com.jgraph.drawio'));
 });

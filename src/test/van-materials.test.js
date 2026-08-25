@@ -1,9 +1,13 @@
 import {describe, test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {
 	getVanWindowFallbackColor,
 	getVanWindowMaterialOptions
 } from '../main/van-materials.js';
+
+const vanCss = readFileSync(new URL(
+	'../../drawio/src/main/webapp/styles/van.css', import.meta.url), 'utf8');
 
 describe('Van macOS window materials', () =>
 {
@@ -44,5 +48,13 @@ describe('Van macOS window materials', () =>
 			reducedTransparency: false
 		}), {backgroundColor: '#E6E7E9'});
 		assert.equal(getVanWindowFallbackColor('settings', false), '#FFFFFF');
+	});
+
+	test('adapts opaque shape-library previews to dark appearance', () =>
+	{
+		assert.match(vanCss,
+			/\.geVan \.geMoreShapesPreview img\s*{[^}]*background:\s*transparent;/s);
+		assert.match(vanCss,
+			/body\.geVan\.geDarkMode \.geMoreShapesPreview img\s*{[^}]*filter:\s*invert\(/s);
 	});
 });

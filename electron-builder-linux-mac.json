@@ -39,22 +39,22 @@
           "CFBundleTypeExtensions": ["drawio"],
           "CFBundleTypeName": "Van Diagram",
           "CFBundleTypeRole": "Editor",
-          "CFBundleTypeIconFile": "icon.icns",
-          "LSItemContentTypes": ["com.hong1495.van.diagram"],
+          "CFBundleTypeIconFile": "document.icns",
+          "LSItemContentTypes": ["com.hong1495.van.diagram", "com.jgraph.drawio"],
           "LSHandlerRank": "Owner"
         },
         {
           "CFBundleTypeExtensions": ["vsdx"],
           "CFBundleTypeName": "VSDX Document",
           "CFBundleTypeRole": "Editor",
-          "CFBundleTypeIconFile": "icon.icns",
+          "CFBundleTypeIconFile": "document.icns",
           "LSHandlerRank": "Default"
         },
         {
           "CFBundleTypeExtensions": ["mmd", "mermaid"],
           "CFBundleTypeName": "Mermaid Diagram",
           "CFBundleTypeRole": "Editor",
-          "CFBundleTypeIconFile": "icon.icns",
+          "CFBundleTypeIconFile": "document.icns",
           "LSHandlerRank": "Default"
         }
       ]
@@ -113,26 +113,29 @@
     ]
   },
   "fileAssociations": [
-	  {
-	  	"ext": "drawio",
-          "name": "Van Diagram",
-          "description": "Van Diagram",
-	  	"mimeType": "application/vnd.jgraph.mxfile",
-	  	"role": "Editor"
-	  },
-	  {
-	  	"ext": "vsdx",
-	  	"name": "VSDX Document",
-	  	"description": "VSDX Document",
-	  	"mimeType": "application/vnd.visio",
-	  	"role": "Editor"
-	  },
-	  {
-	  	"ext": ["mmd", "mermaid"],
-          "name": "Van Mermaid Diagram",
-	  	"description": "Mermaid Diagram",
-	  	"mimeType": "text/vnd.mermaid",
-	  	"role": "Editor"
-	  }
+    {
+      "ext": "drawio",
+      "name": "Van Diagram",
+      "description": "Van Diagram",
+      "mimeType": "application/vnd.jgraph.mxfile",
+      "icon": "document.icns",
+      "role": "Editor"
+    },
+    {
+      "ext": "vsdx",
+      "name": "VSDX Document",
+      "description": "VSDX Document",
+      "mimeType": "application/vnd.visio",
+      "icon": "document.icns",
+      "role": "Editor"
+    },
+    {
+      "ext": ["mmd", "mermaid"],
+      "name": "Van Mermaid Diagram",
+      "description": "Mermaid Diagram",
+      "mimeType": "text/vnd.mermaid",
+      "icon": "document.icns",
+      "role": "Editor"
+    }
   ]
 }
