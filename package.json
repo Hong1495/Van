@@ -1,6 +1,6 @@
 {
   "name": "van",
-  "version": "31.3.2",
+  "version": "0.1.0",
   "productName": "Van",
   "description": "Van desktop diagram editor",
   "exports": "./src/main/electron.js",
