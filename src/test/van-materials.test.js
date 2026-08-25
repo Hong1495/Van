@@ -8,6 +8,8 @@ import {
 
 const vanCss = readFileSync(new URL(
 	'../../drawio/src/main/webapp/styles/van.css', import.meta.url), 'utf8');
+const vanRenderer = readFileSync(new URL(
+	'../../drawio/src/main/webapp/js/diagramly/ElectronApp.js', import.meta.url), 'utf8');
 
 describe('Van macOS window materials', () =>
 {
@@ -56,5 +58,29 @@ describe('Van macOS window materials', () =>
 			/\.geVan \.geMoreShapesPreview img\s*{[^}]*background:\s*transparent;/s);
 		assert.match(vanCss,
 			/body\.geVan\.geDarkMode \.geMoreShapesPreview img\s*{[^}]*filter:\s*invert\(/s);
+	});
+
+	test('stabilizes the native sidebar material when a window regains focus', () =>
+	{
+		assert.match(vanCss,
+			/\.geVan\.geVanNativeMaterial\.geVanMaterialFallback[^}]*background:\s*var\(--van-sidebar-opaque\);/s);
+		assert.match(vanRenderer,
+			/classList\.add\('geVanMaterialFallback'\)[\s\S]*setTimeout\([\s\S]*classList\.remove\('geVanMaterialFallback'\)/);
+	});
+
+	test('adds export between the fullscreen and inspector controls', () =>
+	{
+		assert.match(vanRenderer,
+			/createMenuItem\('export', Editor\.saveImage\)/);
+		assert.match(vanRenderer,
+			/toolbarEnd\.insertBefore\(exportButton, toolbarEnd\.lastElementChild\)/);
+	});
+
+	test('keeps the shape library scrollable without a visible scrollbar', () =>
+	{
+		assert.match(vanCss,
+			/\.geVan > \.geSidebarContainer:not\(\.geFormatContainer\) > div:first-child\s*{[^}]*scrollbar-width:\s*none;/s);
+		assert.match(vanCss,
+			/div:first-child::\-webkit-scrollbar\s*{[^}]*display:\s*none;/s);
 	});
 });
