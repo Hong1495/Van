@@ -141,8 +141,13 @@ document.getElementById('openAdvanced').addEventListener('click', () =>
 
 window.vanSettings.onChanged(applySettings);
 window.vanSettings.onSystemAppearance(applySystemAppearance);
-window.vanSettings.get().then(applySettings);
-window.vanSettings.getSystemAppearance().then(applySystemAppearance);
+const initialSettingsReady = window.vanSettings.get().then(applySettings).catch(() => {});
+const initialAppearanceReady = window.vanSettings.getSystemAppearance().
+	then(applySystemAppearance).catch(() => {});
+Promise.all([initialSettingsReady, initialAppearanceReady]).then(() =>
+{
+	window.vanSettings.ready();
+});
 window.addEventListener('focus', updateWindowActivity);
 window.addEventListener('blur', updateWindowActivity);
 updateWindowActivity();

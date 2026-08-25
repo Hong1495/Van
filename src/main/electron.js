@@ -1489,7 +1489,13 @@ app.whenReady().then(() =>
 			
 			function loadFinished(e)
 			{
-				if (e != null && !validateSender(e.senderFrame)) return null;
+				if (e != null)
+				{
+					if (e.sender !== win.webContents ||
+						!validateSender(e.senderFrame)) return null;
+
+					ipcMain.removeListener('app-load-finished', loadFinished);
+				}
 
 				loadEvtCount++;
 				
@@ -1512,9 +1518,12 @@ app.whenReady().then(() =>
 				}
 			}
 			
-			//Order of these two events is not guaranteed, so wait for them async.
-			//TOOD There is still a chance we catch another window 'app-load-finished' if user created multiple windows quickly 
-	    	ipcMain.once('app-load-finished', loadFinished);
+			// Order of these two events is not guaranteed, so wait for both.
+			ipcMain.on('app-load-finished', loadFinished);
+			win.once('closed', () =>
+			{
+				ipcMain.removeListener('app-load-finished', loadFinished);
+			});
     	    
     	    win.webContents.on('did-finish-load', function()
     	    {    			
@@ -1531,7 +1540,13 @@ app.whenReady().then(() =>
 			
 	function loadFinished(e)
 	{
-		if (e != null && !validateSender(e.senderFrame)) return null;
+		if (e != null)
+		{
+			if (e.sender !== win.webContents ||
+				!validateSender(e.senderFrame)) return null;
+
+			ipcMain.removeListener('app-load-finished', loadFinished);
+		}
 
 		loadEvtCount++;
 		
@@ -1565,9 +1580,12 @@ app.whenReady().then(() =>
 		}
 	}
 	
-	//Order of these two events is not guaranteed, so wait for them async.
-	//TOOD There is still a chance we catch another window 'app-load-finished' if user created multiple windows quickly 
-	ipcMain.once('app-load-finished', loadFinished);
+	// Order of these two events is not guaranteed, so wait for both.
+	ipcMain.on('app-load-finished', loadFinished);
+	win.once('closed', () =>
+	{
+		ipcMain.removeListener('app-load-finished', loadFinished);
+	});
 
     win.webContents.on('did-finish-load', function()
     {
@@ -1900,8 +1918,12 @@ app.whenReady().then(() =>
 	{
 		if (settingsWindow != null && !settingsWindow.isDestroyed())
 		{
-			settingsWindow.show();
-			settingsWindow.focus();
+			if (settingsWindow.vanReadyToShow)
+			{
+				settingsWindow.show();
+				settingsWindow.focus();
+			}
+
 			return;
 		}
 
@@ -1928,15 +1950,44 @@ app.whenReady().then(() =>
 				sandbox: true
 			}
 		});
+		settingsWindow.vanReadyToShow = false;
 
 		settingsWindow.setMenu(null);
+		const pendingSettingsWindow = settingsWindow;
+		let browserReady = false;
+		let rendererReady = false;
+		const revealSettingsWindow = () =>
+		{
+			if (browserReady && rendererReady &&
+				!pendingSettingsWindow.isDestroyed())
+			{
+				pendingSettingsWindow.vanReadyToShow = true;
+				pendingSettingsWindow.show();
+			}
+		};
+		const handleSettingsReady = (event) =>
+		{
+			if (event.sender === pendingSettingsWindow.webContents &&
+				isSettingsSender(event))
+			{
+				rendererReady = true;
+				revealSettingsWindow();
+			}
+		};
+
+		ipcMain.on('van-settings:ready', handleSettingsReady);
 		settingsWindow.loadFile(settingsPagePath);
 		settingsWindow.once('ready-to-show', () =>
 		{
+			browserReady = true;
 			broadcastVanSystemAppearance();
-			settingsWindow?.show();
+			revealSettingsWindow();
 		});
-		settingsWindow.on('closed', () => { settingsWindow = null; });
+		settingsWindow.on('closed', () =>
+		{
+			ipcMain.removeListener('van-settings:ready', handleSettingsReady);
+			settingsWindow = null;
+		});
 	}
 
 	ipcMain.on('van-menu-state', (event, payload) =>
@@ -2141,7 +2192,13 @@ app.on('will-finish-launching', function()
 			
 			function loadFinished(e)
 			{
-				if (e != null && !validateSender(e.senderFrame)) return null;
+				if (e != null)
+				{
+					if (e.sender !== win.webContents ||
+						!validateSender(e.senderFrame)) return null;
+
+					ipcMain.removeListener('app-load-finished', loadFinished);
+				}
 
 				loadEvtCount++;
 				
@@ -2151,9 +2208,12 @@ app.on('will-finish-launching', function()
 				}
 			}
 			
-			//Order of these two events is not guaranteed, so wait for them async.
-			//TOOD There is still a chance we catch another window 'app-load-finished' if user created multiple windows quickly 
-	    	ipcMain.once('app-load-finished', loadFinished);
+			// Order of these two events is not guaranteed, so wait for both.
+			ipcMain.on('app-load-finished', loadFinished);
+			win.once('closed', () =>
+			{
+				ipcMain.removeListener('app-load-finished', loadFinished);
+			});
     	    
 		    win.webContents.on('did-finish-load', function()
 		    {

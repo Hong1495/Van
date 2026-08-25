@@ -83,4 +83,16 @@ describe('Van macOS window materials', () =>
 		assert.match(vanCss,
 			/div:first-child::\-webkit-scrollbar\s*{[^}]*display:\s*none;/s);
 	});
+
+	test('finishes first-frame styling before revealing the editor window', () =>
+	{
+		const vanClass = vanRenderer.indexOf("document.body.classList.add('geVan')");
+		const appLoadOverride = vanRenderer.indexOf('var appLoad = App.prototype.load');
+
+		assert.ok(vanClass >= 0 && vanClass < appLoadOverride);
+		assert.match(vanRenderer,
+			/var vanStylesheetReady = new Promise\([\s\S]*vanStylesheet\.onload = resolve;[\s\S]*document\.head\.appendChild\(vanStylesheet\);/);
+		assert.match(vanRenderer,
+			/editorUi\.vanWorkspaceReady = vanSystemAppearancePromise\.then\([\s\S]*Promise\.all\(\[vanStylesheetReady, vanWorkspaceReady\]\)\.then\(function\(\)[\s\S]*sendMessage\('app-load-finished'/);
+	});
 });
