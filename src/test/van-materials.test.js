@@ -10,6 +10,8 @@ const vanCss = readFileSync(new URL(
 	'../../drawio/src/main/webapp/styles/van.css', import.meta.url), 'utf8');
 const vanRenderer = readFileSync(new URL(
 	'../../drawio/src/main/webapp/js/diagramly/ElectronApp.js', import.meta.url), 'utf8');
+const electronMain = readFileSync(new URL(
+	'../main/electron.js', import.meta.url), 'utf8');
 
 describe('Van macOS window materials', () =>
 {
@@ -60,12 +62,20 @@ describe('Van macOS window materials', () =>
 			/body\.geVan\.geDarkMode \.geMoreShapesPreview img\s*{[^}]*filter:\s*invert\(/s);
 	});
 
-	test('stabilizes the native sidebar material when a window regains focus', () =>
+	test('keeps the native sidebar material stable when focus changes', () =>
 	{
+		assert.doesNotMatch(vanCss, /geVanMaterialFallback/);
+		assert.doesNotMatch(vanRenderer, /geVanMaterialFallback/);
 		assert.match(vanCss,
-			/\.geVan\.geVanNativeMaterial\.geVanMaterialFallback[^}]*background:\s*var\(--van-sidebar-opaque\);/s);
+			/\.geVan > \.geSidebarContainer:not\(\.geFormatContainer\)\s*{[^}]*background:\s*var\(--van-sidebar-opaque\);/s);
+		assert.doesNotMatch(vanCss,
+			/\.geVan\.geVanNativeMaterial[^}]*background:\s*transparent;/s);
+		assert.match(vanCss,
+			/\.geEditor\.geVan\s*{[\s\S]*background:\s*var\(--van-workspace\);/s);
+		assert.match(vanCss,
+			/\.geVan > \.geHsplit\s*{[^}]*background:\s*var\(--van-workspace\);/s);
 		assert.match(vanRenderer,
-			/classList\.add\('geVanMaterialFallback'\)[\s\S]*setTimeout\([\s\S]*classList\.remove\('geVanMaterialFallback'\)/);
+			/window\.addEventListener\('focus', updateVanWindowActivity\);[\s\S]*window\.addEventListener\('blur', updateVanWindowActivity\);/);
 	});
 
 	test('adds export between the fullscreen and inspector controls', () =>
@@ -93,6 +103,12 @@ describe('Van macOS window materials', () =>
 		assert.match(vanRenderer,
 			/var vanStylesheetReady = new Promise\([\s\S]*vanStylesheet\.onload = resolve;[\s\S]*document\.head\.appendChild\(vanStylesheet\);/);
 		assert.match(vanRenderer,
-			/editorUi\.vanWorkspaceReady = vanSystemAppearancePromise\.then\([\s\S]*Promise\.all\(\[vanStylesheetReady, vanWorkspaceReady\]\)\.then\(function\(\)[\s\S]*sendMessage\('app-load-finished'/);
+			/editorUi\.vanWorkspaceReady = vanSystemAppearancePromise\.then\([\s\S]*Promise\.all\(\[vanStylesheetReady, vanWorkspaceReady\]\)[\s\S]*\.then\(waitForVanFirstPaint\)\.then\(function\(\)[\s\S]*sendMessage\('app-load-finished'/);
+		assert.match(vanRenderer,
+			/var waitForVanFirstPaint = function\(\)[\s\S]*requestAnimationFrame\(function\(\)[\s\S]*requestAnimationFrame\(resolve\);/);
+		assert.match(electronMain,
+			/if \(!force && \(!browserReadyToShow \|\| !rendererReadyToShow\)\) return;/);
+		assert.match(electronMain,
+			/rendererReadyToShow = true;[\s\S]*mainWindow\.once\('ready-to-show',[\s\S]*browserReadyToShow = true;/);
 	});
 });

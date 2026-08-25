@@ -540,6 +540,8 @@ function createWindow (opt = {})
 	windowsRegistry.push(mainWindow)
 	lastActiveEditorWindow = mainWindow
 	let revealFallback = null;
+	let browserReadyToShow = false;
+	let rendererReadyToShow = false;
 
 	const showWindowButtons = () =>
 	{
@@ -550,9 +552,10 @@ function createWindow (opt = {})
 		}
 	};
 
-	const revealEditorWindow = () =>
+	const revealEditorWindow = (force = false) =>
 	{
 		if (mainWindow.isDestroyed() || mainWindow.isVisible()) return;
+		if (!force && (!browserReadyToShow || !rendererReadyToShow)) return;
 
 		if (revealFallback != null)
 		{
@@ -570,12 +573,18 @@ function createWindow (opt = {})
 	{
 		if (event.sender === mainWindow.webContents && validateSender(event.senderFrame))
 		{
+			rendererReadyToShow = true;
 			revealEditorWindow();
 		}
 	};
 
 	ipcMain.on('app-load-finished', handleAppLoadFinished);
-	revealFallback = setTimeout(revealEditorWindow, 15000);
+	mainWindow.once('ready-to-show', () =>
+	{
+		browserReadyToShow = true;
+		revealEditorWindow();
+	});
+	revealFallback = setTimeout(() => revealEditorWindow(true), 15000);
 	revealFallback.unref?.();
 
 	if (isMac && typeof mainWindow.setWindowButtonVisibility === 'function')
