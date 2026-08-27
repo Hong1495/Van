@@ -1,6 +1,7 @@
 const {
     contextBridge,
-    ipcRenderer
+    ipcRenderer,
+    webUtils
 } = require("electron");
 
 // One-shot migration: when the main process determines this is the first
@@ -41,10 +42,10 @@ let reqId = 1;
 let reqInfo = {};
 let fileChangedListeners = {};
 
-ipcRenderer.on('mainResp', (event, resp) => 
+ipcRenderer.on('mainResp', (event, resp) =>
 {
 	var callbacks = reqInfo[resp.reqId];
-	
+
 	if (resp.error)
 	{
 		callbacks.error(resp.msg, resp.e);
@@ -53,7 +54,7 @@ ipcRenderer.on('mainResp', (event, resp) =>
 	{
 		callbacks.callback(resp.data);
 	}
-	
+
 	delete reqInfo[resp.reqId];
 });
 
@@ -101,6 +102,10 @@ contextBridge.exposeInMainWorld(
 			{
 				callback(args);
 			});
+		},
+		getPathForFile: function(file)
+		{
+			return webUtils.getPathForFile(file);
 		}
     }
 );
